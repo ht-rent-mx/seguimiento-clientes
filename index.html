@@ -506,10 +506,10 @@ function App(){
         {vista==="tablero" && <VistaTablero registros={visibles} now={now} onEdit={setEditando}/>}
         {vista==="lista" && <VistaLista registros={visibles} now={now} onEdit={setEditando}/>}
         {vista==="dia" && <AgendaDia dia={dia} setDia={setDia} agenda={agenda} onEdit={setEditando}/>}
-        {vista==="incidencias" && USR && <Incidencias incs={incs} cargando={incCargando} err={incErr} onRecargar={cargarIncs}/>}
+        {vista==="incidencias" && USR && <Incidencias incs={incs} cargando={incCargando} err={incErr} onRecargar={cargarIncs} onNueva={()=>setIncidenciaDe("libre")}/>}
       </main>
 
-      {incidenciaDe && <FormIncidencia cliente={incidenciaDe} onClose={()=>setIncidenciaDe(null)} onCreada={()=>{cargarIncs();setVista("incidencias");}}/>}
+      {incidenciaDe && <FormIncidencia cliente={incidenciaDe==="libre"?null:incidenciaDe} sugerencias={[...new Set(registros.map(r=>r.cliente).filter(Boolean))].sort()} onClose={()=>setIncidenciaDe(null)} onCreada={()=>{cargarIncs();setVista("incidencias");}}/>}
       {editando && <Modal puedeEditar={puedeEditar} inicial={editando==="nuevo"?null:editando} fEjec={fEjec} ejecutivos={ejecutivos} cliPorEjec={cliPorEjec} onClose={()=>setEditando(null)} onSave={guardar}/>}
     </div>
   );
@@ -733,27 +733,32 @@ function empresaDe(r){const e=String(r&&r.empresa||"").trim();return EMPRESA_LAR
 const fechaInc=s=>{if(!s)return"";const d=new Date(s);return `${d.getDate()} ${MESES[d.getMonth()].slice(0,3)} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
 
 /* ---- Formulario: se abre desde la tarjeta o la ficha del cliente ---- */
-function FormIncidencia({cliente,onClose,onCreada}){
-  const empresa=empresaDe(cliente);
+function FormIncidencia({cliente,onClose,onCreada,sugerencias}){
+  const libre=!cliente;
+  const [manual,setManual]=useState({cliente:"",empresa:"JJ Forza"});
+  const [eqLibres,setEqLibres]=useState([{tipo:"",niv:""}]);
+  const empresa=libre?manual.empresa:empresaDe(cliente);
   const [opciones,setOpciones]=useState(null);
   const [cat,setCat]=useState("");const [subs,setSubs]=useState([]);
   const [equipos,setEquipos]=useState([]);
-  const [f,setF]=useState({descripcion:"",requerimiento:"",ocurrio:HOY,ubicacion:cliente.patioEntrega||""});
+  const [f,setF]=useState({descripcion:"",requerimiento:"",ocurrio:HOY,ubicacion:(cliente&&cliente.patioEntrega)||""});
   const [archivos,setArchivos]=useState([]);
   const [msg,setMsg]=useState("");const [guardando,setGuardando]=useState(false);
   const inp="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
   useEffect(()=>{let vivo=true;incOpciones(empresa).then(o=>{if(!vivo)return;setOpciones(o||{});const cs=Object.keys(o||{});if(cs.length===1)setCat(cs[0]);}).catch(e=>setMsg("No se pudieron cargar las opciones: "+e.message));return()=>{vivo=false;};},[empresa]);
-  const lista=(cliente.equipos||[]).filter(e=>e.tipo);
-  const nivs=String(cliente.niv||"").split(/[\n,]+/).map(x=>x.trim()).filter(Boolean);
+  const lista=((cliente&&cliente.equipos)||[]).filter(e=>e.tipo);
+  const nivs=String((cliente&&cliente.niv)||"").split(/[\n,]+/).map(x=>x.trim()).filter(Boolean);
   const toggleEq=i=>setEquipos(p=>p.includes(i)?p.filter(x=>x!==i):[...p,i]);
   const toggleSub=sc=>setSubs(p=>p.includes(sc)?p.filter(x=>x!==sc):[...p,sc]);
   async function agregarArchivo(file){try{const c=await comprimir(file);setArchivos(p=>[...p,c]);}catch(e){setMsg("No se pudo leer el archivo: "+e.message);}}
-  const valido=cat&&subs.length>0&&f.descripcion.trim().length>5;
+  const valido=cat&&subs.length>0&&f.descripcion.trim().length>5&&(!libre||manual.cliente.trim().length>2);
   async function enviar(){
     if(!valido||guardando)return;setGuardando(true);setMsg("");
     try{
-      const eqs=equipos.map(i=>({tipo:lista[i].tipo,marca:lista[i].marca||"",anio:lista[i].anio||"",condicion:lista[i].condicion||"",niv:nivs[i]||""}));
-      const r=await incCrear({cliente_id:cliente.id,cliente:cliente.cliente,empresa:empresa,equipos:eqs,
+      const eqs=libre
+        ? eqLibres.filter(e=>String(e.tipo||"").trim()||String(e.niv||"").trim()).map(e=>({tipo:(e.tipo||"").trim(),marca:"",anio:"",condicion:"",niv:(e.niv||"").trim()}))
+        : equipos.map(i=>({tipo:lista[i].tipo,marca:lista[i].marca||"",anio:lista[i].anio||"",condicion:lista[i].condicion||"",niv:nivs[i]||""}));
+      const r=await incCrear({cliente_id:libre?null:cliente.id,cliente:libre?manual.cliente.trim():cliente.cliente,empresa:empresa,equipos:eqs,
         categoria:cat,subcategorias:subs,descripcion:f.descripcion.trim(),requerimiento:f.requerimiento.trim(),
         ocurrio:f.ocurrio,ubicacion:f.ubicacion});
       for(const a of archivos){await incArchivo(r.id,a.nombre,a.mime,a.b64);}
@@ -765,11 +770,30 @@ function FormIncidencia({cliente,onClose,onCreada}){
     <div className="h-full w-full sm:max-w-xl overflow-y-auto bg-white shadow-2xl" onClick={e=>e.stopPropagation()}>
       <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b-4 border-forza bg-carbon px-5 py-3.5">
         <div className="min-w-0"><h2 className="font-display text-xl text-white leading-tight truncate">Levantar incidencia</h2>
-          <p className="text-[12px] text-plata truncate">{cliente.cliente} · {empresa}</p></div>
+          <p className="text-[12px] text-plata truncate">{libre?("Cliente fuera de la cartera · "+empresa):(cliente.cliente+" · "+empresa)}</p></div>
         <button onClick={onClose} aria-label="Cerrar" className="grid h-9 w-9 shrink-0 place-items-center rounded border border-carbon-edge text-white hover:bg-carbon-2"><Icon name="x" size={18}/></button>
       </div>
       <div className="p-5 space-y-4">
-        <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Equipos involucrados</span>
+        {libre && <div className="rounded-lg border border-forza bg-forza-suave/60 p-3 space-y-3">
+          <p className="text-xs font-semibold text-carbon">Incidencia de un cliente que no está en la cartera de la app.</p>
+          <Campo label="Nombre del cliente"><input list="dl-inc-cli" value={manual.cliente} onChange={e=>setManual({...manual,cliente:e.target.value})} placeholder="Nombre o razón social…" className={inp}/></Campo>
+          <datalist id="dl-inc-cli">{(sugerencias||[]).map(x=><option key={x} value={x}/>)}</datalist>
+          <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Empresa</span>
+            <div className="grid grid-cols-3 gap-2">{["HT Rent","JJ Forza","3C"].map(e=>(
+              <button key={e} onClick={()=>{setManual({...manual,empresa:e});setCat("");setSubs([]);}} className={`rounded-lg border px-2 py-2 text-sm font-medium ${manual.empresa===e?"border-carbon bg-carbon text-white":"border-stone-300 text-slate-600 hover:bg-white"}`}>{e}</button>))}</div>
+            <p className="mt-1 text-[11px] text-slate-500">Define a quién le toca atender la incidencia.</p>
+          </div>
+          <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Equipos involucrados</span>
+            <div className="space-y-2">{eqLibres.map((e,i)=>(
+              <div key={i} className="flex items-center gap-2">
+                <input value={e.tipo} onChange={ev=>setEqLibres(p=>p.map((x,j)=>j===i?{...x,tipo:ev.target.value}:x))} placeholder="Tipo de equipo" className="flex-1 min-w-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon"/>
+                <input value={e.niv} onChange={ev=>setEqLibres(p=>p.map((x,j)=>j===i?{...x,niv:ev.target.value}:x))} placeholder="NIV" className="w-44 shrink-0 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm mono outline-none focus:border-carbon"/>
+                {eqLibres.length>1 && <button onClick={()=>setEqLibres(p=>p.filter((_,j)=>j!==i))} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-white hover:text-red-500"><Icon name="x" size={16}/></button>}
+              </div>))}</div>
+            <button onClick={()=>setEqLibres(p=>[...p,{tipo:"",niv:""}])} className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-carbon hover:opacity-70"><Icon name="plus" size={15}/> Agregar equipo</button>
+          </div>
+        </div>}
+        {!libre && <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Equipos involucrados</span>
           {lista.length===0?<p className="text-xs text-slate-400">Este cliente no tiene equipos capturados.</p>:
           <div className="space-y-1.5">{lista.map((e,i)=>(
             <button key={i} onClick={()=>toggleEq(i)} className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${equipos.includes(i)?"border-carbon bg-forza-suave":"border-stone-300 hover:bg-stone-50"}`}>
@@ -777,7 +801,7 @@ function FormIncidencia({cliente,onClose,onCreada}){
               <span className="min-w-0"><span className="font-semibold">{e.cantidad||1}× {e.tipo}</span>{e.marca?" · "+e.marca:""}{e.anio?" "+e.anio:""}
                 {nivs[i]&&<span className="block text-[11px] text-slate-500 mono">NIV: {nivs[i]}</span>}</span>
             </button>))}</div>}
-        </div>
+        </div>}
         <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo de incidencia</span>
           {opciones===null?<p className="text-xs text-slate-400">Cargando opciones…</p>:
            Object.keys(opciones).length===0?<p className="text-xs text-red-600">Para {empresa} no hay tipos de incidencia configurados.</p>:
@@ -1049,7 +1073,7 @@ function DetalleIncidencia({id,onClose,onCambio}){
 }
 
 /* ---- Tablero + reporte ---- */
-function Incidencias({incs,cargando,err,onRecargar}){
+function Incidencias({incs,cargando,err,onRecargar,onNueva}){
   const [sel,setSel]=useState(null);const [vistaI,setVistaI]=useState("tablero");const [rep,setRep]=useState(null);const [repErr,setRepErr]=useState("");
   useEffect(()=>{if(vistaI==="reporte"&&!rep)incReporte().then(setRep).catch(e=>setRepErr(e.message));},[vistaI,rep]);
   const vencidas=(incs||[]).filter(i=>i.vencida).length;
@@ -1071,6 +1095,7 @@ function Incidencias({incs,cargando,err,onRecargar}){
       </div>
       <div className="flex items-center gap-2">
         <span className="text-xs font-semibold text-slate-500">{abiertas} abierta(s){vencidas>0?` · ${vencidas} vencida(s)`:""}</span>
+        {onNueva && USR && (USR.nivel==="sc"||USR.nivel==="admin") && <button onClick={onNueva} className="inline-flex items-center gap-1 rounded-lg border border-forza bg-forza px-3 py-1.5 text-sm font-bold text-forza-tinta hover:brightness-95"><Icon name="plus" size={15}/> Nueva incidencia</button>}
         <button onClick={onRecargar} className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-slate-400">Recargar</button>
         <button onClick={exportar} className="inline-flex items-center gap-1.5 rounded-lg border border-carbon-edge bg-carbon px-3 py-1.5 text-sm font-semibold text-white hover:bg-carbon-2"><Icon name="download" size={15}/> Excel</button>
       </div>
