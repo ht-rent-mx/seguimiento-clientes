@@ -28,6 +28,7 @@ tailwind.config={theme:{extend:{
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{--carbon:#15181C;--forza:#FFEA19;--bg:#EEF0F2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 body{background:var(--bg);font-family:'Barlow','Segoe UI',Roboto,Arial,sans-serif;font-size:15px;color:#1C2126;-webkit-font-smoothing:antialiased}
@@ -82,6 +83,10 @@ async function incEvento(id,accion,comentario){return await jjRpc("jj_inc_evento
 async function incArchivo(id,nombre,mime,datos){return await jjRpc("jj_inc_archivo",uArgs({p_id:id,p_nombre:nombre,p_mime:mime,p_datos:datos}),1);}
 async function incArchivoLeer(aid){return await jjRpc("jj_inc_archivo_leer",uArgs({p_archivo:aid}),2);}
 async function incReporte(){return await jjRpc("jj_inc_reporte",uArgs(),2);}
+async function dicObtener(inc){return await jjRpc("jj_dic_obtener",uArgs({p_inc:inc}),2);}
+async function dicGuardar(inc,rec,emitir){return await jjRpc("jj_dic_guardar",uArgs({p_inc:inc,p_rec:rec,p_emitir:!!emitir}),1);}
+const RESPONSABLES=["JJ Forza","Cliente","Compartido","Garantía","Proveedor"];
+const dinero=n=>(Number(n)||0).toLocaleString("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:2});
 const INC_ESTADOS=["Abierta","En revisión","En espera","Resuelta","Cerrada"];
 const INC_COLOR={"Abierta":{chip:"bg-red-50 text-red-700 border-red-200",spine:"bg-red-500"},
  "En revisión":{chip:"bg-forza-suave text-carbon border-forza",spine:"bg-forza"},
@@ -808,6 +813,145 @@ function FormIncidencia({cliente,onClose,onCreada}){
 }
 
 /* ---- Detalle y gestión de una incidencia ---- */
+async function pdfDictamen(inc, d, conCostos){
+  const {jsPDF}=window.jspdf; const doc=new jsPDF({unit:"pt",format:"letter"});
+  const W=doc.internal.pageSize.getWidth(), M=40; let y=0;
+  const linea=(t,x,yy,op)=>{doc.text(String(t==null?"":t),x,yy,op);};
+  // Encabezado
+  doc.setFillColor(21,24,28); doc.rect(0,0,W,70,"F");
+  doc.setFillColor(255,234,25); doc.rect(0,70,W,5,"F");
+  doc.setTextColor(255,255,255); doc.setFont("helvetica","bolditalic"); doc.setFontSize(20);
+  linea("REPORTE DE INSPECCIÓN DE UNIDAD",M,34);
+  doc.setFontSize(10); doc.setFont("helvetica","normal"); doc.setTextColor(200,205,210);
+  linea((d.folio||"")+"  ·  Incidencia "+(inc.folio||"")+"  ·  JJ FORZA SEMI-REMOLQUES",M,54);
+  y=100; doc.setTextColor(20,20,20); doc.setFontSize(10);
+  const campo=(et,val,x,yy,w)=>{doc.setFont("helvetica","bold");linea(et,x,yy);
+    doc.setFont("helvetica","normal");const tx=doc.splitTextToSize(String(val==null?"":val),w);doc.text(tx,x+doc.getTextWidth(et)+6,yy);return tx.length;};
+  campo("TIPO DE UNIDAD:", d.tipo_unidad||"", M, y, 200); campo("FECHA:", (d.emitido_en||d.creado||"").slice(0,10), W/2+20, y, 120); y+=18;
+  campo("NIV:", d.nivs||"", M, y, 220); campo("COLOR:", d.color||"", W/2+20, y, 120); y+=18;
+  campo("CLIENTE:", inc.cliente||"", M, y, 240); campo("EMPRESA:", inc.empresa||"", W/2+20, y, 120); y+=18;
+  campo("TIPO DE INCIDENCIA:", (inc.categoria||"")+" · "+((inc.subcategorias||[]).join(", ")), M, y, 320); y+=24;
+  const bloque=(tit,txt)=>{doc.setFont("helvetica","bold");doc.setFontSize(10);linea(tit,M,y);y+=14;
+    doc.setFont("helvetica","normal");const tx=doc.splitTextToSize(String(txt||"—"),W-2*M);doc.text(tx,M,y);y+=tx.length*12+12;};
+  bloque("DESCRIPCIÓN DE LA INCIDENCIA REPORTADA POR EL CLIENTE:", d.reporte_cliente||inc.descripcion);
+  bloque("HALLAZGOS DE LA INSPECCIÓN:", d.hallazgos);
+  // Tabla de retrabajo
+  doc.setFont("helvetica","bold"); doc.setFillColor(236,238,240);
+  const anchoDet=conCostos?300:400;
+  doc.rect(M,y-11,W-2*M,18,"F"); linea("DETALLE DEL RETRABAJO",M+4,y+1);
+  if(conCostos) linea("COSTO MXN",M+anchoDet+10,y+1);
+  linea("RESPONSABLE",M+anchoDet+(conCostos?100:10),y+1); y+=22;
+  doc.setFont("helvetica","normal");
+  (d.renglones||[]).forEach(r=>{
+    if(y>700){doc.addPage();y=60;}
+    const tx=doc.splitTextToSize(String(r.detalle||""),anchoDet-10); doc.text(tx,M+4,y);
+    if(conCostos) linea(r.costo===""||r.costo==null?"":dinero(r.costo),M+anchoDet+10,y);
+    linea(r.responsable||"",M+anchoDet+(conCostos?100:10),y);
+    y+=Math.max(tx.length*12,14)+4;
+  });
+  if(conCostos){ y+=8; doc.setFont("helvetica","bold");
+    linea("SUBTOTAL: "+dinero(d.subtotal),W-M-180,y); y+=14;
+    linea("IVA 16%: "+dinero(d.iva),W-M-180,y); y+=14;
+    doc.setFontSize(12); linea("TOTAL: "+dinero(d.total),W-M-180,y); doc.setFontSize(10); y+=20; }
+  if(d.observaciones){ doc.setFont("helvetica","normal"); y+=6; bloque("OBSERVACIONES:", d.observaciones); }
+  doc.setFont("helvetica","normal"); doc.setTextColor(110,110,110); doc.setFontSize(9);
+  y+=10; linea("Emitió: "+(d.emitido_por||"")+"  ·  "+(d.emitido_en||"").slice(0,10),M,y);
+  // Fotos
+  const fotos=(inc.adjuntos||[]).filter(a=>/^image\//.test(a.mime)).slice(0,6);
+  if(fotos.length){
+    doc.addPage(); doc.setTextColor(20,20,20); doc.setFont("helvetica","bold"); doc.setFontSize(12);
+    linea("EVIDENCIAS FOTOGRÁFICAS",M,50); let px=M, py=70;
+    for(const f of fotos){
+      try{ const a=await incArchivoLeer(f.id);
+        doc.addImage("data:"+a.mime+";base64,"+a.datos,"JPEG",px,py,240,180,undefined,"FAST");
+        px += 260; if(px>W-2*M){px=M; py+=200;}
+        if(py>600){doc.addPage(); px=M; py=60;}
+      }catch(e){}
+    }
+  }
+  doc.save((d.folio||"dictamen")+(conCostos?"-interno":"-cliente")+".pdf");
+}
+
+function FormDictamen({inc, dic, onClose, onListo}){
+  const [f,setF]=useState(()=>({
+    tipo_unidad: dic&&dic.tipo_unidad || ((inc.equipos||[])[0]||{}).tipo || "",
+    nivs: dic&&dic.nivs || (inc.equipos||[]).map(e=>e.niv).filter(Boolean).join(", "),
+    color: dic&&dic.color || "",
+    reporte_cliente: dic&&dic.reporte_cliente || inc.descripcion || "",
+    hallazgos: dic&&dic.hallazgos || "",
+    observaciones: dic&&dic.observaciones || "",
+    renglones: (dic&&dic.renglones&&dic.renglones.length?dic.renglones:[{detalle:"",costo:"",responsable:"JJ Forza"}])
+  }));
+  const [err,setErr]=useState("");const [ocupado,setOcupado]=useState(false);const [subiendo,setSubiendo]=useState(false);
+  const inp="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
+  const setR=(i,k,v)=>setF(p=>({...p,renglones:p.renglones.map((r,j)=>j===i?{...r,[k]:v}:r)}));
+  const sub=f.renglones.reduce((s,r)=>s+(Number(r.costo)||0),0);
+  async function guardar(emitir){
+    if(ocupado)return; setOcupado(true); setErr("");
+    try{
+      const limpios=f.renglones.filter(r=>String(r.detalle||"").trim()).map(r=>({detalle:r.detalle.trim(),costo:r.costo===""?null:Number(r.costo),responsable:r.responsable||""}));
+      await dicGuardar(inc.id,{...f,renglones:limpios},emitir);
+      onListo&&onListo(); if(emitir)onClose();
+      else setErr("Borrador guardado.");
+    }catch(e){setErr(e.message);}finally{setOcupado(false);}
+  }
+  async function foto(file){try{setSubiendo(true);const c=await comprimir(file);await incArchivo(inc.id,c.nombre,c.mime,c.b64);onListo&&onListo();}catch(e){setErr(e.message);}finally{setSubiendo(false);}}
+  return (<div className="fixed inset-0 z-[70] flex justify-end" style={{background:"rgba(10,12,15,.65)"}} onClick={onClose}>
+    <div className="h-full w-full sm:max-w-2xl overflow-y-auto bg-white shadow-2xl" onClick={e=>e.stopPropagation()}>
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b-4 border-forza bg-carbon px-5 py-3.5" style={{paddingTop:"calc(14px + env(safe-area-inset-top,0px))"}}>
+        <div className="min-w-0"><h2 className="font-display text-xl text-white leading-tight">Dictamen de inspección</h2>
+          <p className="text-[12px] text-plata truncate">{inc.folio} · {inc.cliente} · {inc.empresa}</p></div>
+        <button onClick={onClose} aria-label="Cerrar" className="grid h-9 w-9 shrink-0 place-items-center rounded border border-carbon-edge text-white hover:bg-carbon-2"><Icon name="x" size={18}/></button>
+      </div>
+      <div className="p-5 space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Campo label="Tipo de unidad"><input value={f.tipo_unidad} onChange={e=>setF({...f,tipo_unidad:e.target.value})} className={inp}/></Campo>
+          <Campo label="Color"><input value={f.color} onChange={e=>setF({...f,color:e.target.value})} className={inp} placeholder="ROJO, AZUL…"/></Campo>
+        </div>
+        <Campo label="NIV de la(s) unidad(es)"><input value={f.nivs} onChange={e=>setF({...f,nivs:e.target.value})} className={inp+" mono"}/></Campo>
+        <Campo label="Lo que reportó el cliente"><textarea rows={3} value={f.reporte_cliente} onChange={e=>setF({...f,reporte_cliente:e.target.value})} className={inp}/></Campo>
+        <Campo label="Hallazgos de la inspección"><textarea rows={4} value={f.hallazgos} onChange={e=>setF({...f,hallazgos:e.target.value})} className={inp} placeholder="Qué se encontró al revisar la unidad…"/></Campo>
+        <div>
+          <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Detalle del retrabajo</span>
+          <div className="space-y-2">{f.renglones.map((r,i)=>(
+            <div key={i} className="rounded-lg border border-stone-200 bg-stone-50/60 p-2 space-y-2">
+              <div className="flex items-start gap-2">
+                <textarea rows={2} value={r.detalle} onChange={e=>setR(i,"detalle",e.target.value)} placeholder={`Paso ${i+1}: qué se va a hacer…`} className="flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon"/>
+                {f.renglones.length>1 && <button onClick={()=>setF(p=>({...p,renglones:p.renglones.filter((_,j)=>j!==i)}))} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-slate-400 hover:bg-stone-100 hover:text-red-500"><Icon name="x" size={16}/></button>}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-medium text-slate-400">Costo MXN</span>
+                <input type="number" inputMode="decimal" min="0" value={r.costo} onChange={e=>setR(i,"costo",e.target.value)} className="w-32 rounded-lg border border-stone-300 bg-white px-2 py-1 text-sm mono outline-none focus:border-carbon"/>
+                <select value={r.responsable} onChange={e=>setR(i,"responsable",e.target.value)} className="rounded-lg border border-stone-300 bg-white px-2 py-1 text-sm outline-none focus:border-carbon">{RESPONSABLES.map(x=><option key={x}>{x}</option>)}</select>
+              </div>
+            </div>))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <button onClick={()=>setF(p=>({...p,renglones:[...p.renglones,{detalle:"",costo:"",responsable:"JJ Forza"}]}))} className="inline-flex items-center gap-1 text-sm font-semibold text-carbon hover:opacity-70"><Icon name="plus" size={15}/> Agregar renglón</button>
+            <span className="text-sm font-bold text-slate-700">Subtotal <span className="mono">{dinero(sub)}</span> · IVA <span className="mono">{dinero(sub*0.16)}</span> · Total <span className="mono text-carbon">{dinero(sub*1.16)}</span></span>
+          </div>
+        </div>
+        <Campo label="Observaciones (opcional)"><textarea rows={2} value={f.observaciones} onChange={e=>setF({...f,observaciones:e.target.value})} className={inp}/></Campo>
+        <div className="rounded-lg border border-stone-200 p-3">
+          <span className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Fotos de la inspección</span>
+          <div className="flex flex-wrap gap-2">
+            <label className="cursor-pointer rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">📷 Tomar foto<input type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>{const fl=e.target.files[0];if(fl)foto(fl);e.target.value="";}}/></label>
+            <label className="cursor-pointer rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm font-semibold text-slate-600">📎 Archivo o PDF<input type="file" accept="image/*,application/pdf" className="hidden" onChange={e=>{const fl=e.target.files[0];if(fl)foto(fl);e.target.value="";}}/></label>
+            {subiendo && <span className="self-center text-xs font-semibold text-sky-600">Subiendo…</span>}
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">Las fotos se agregan a la incidencia y salen en el PDF.</p>
+        </div>
+        {err && <p className={`rounded-lg border border-l-[6px] px-3 py-2 text-xs font-semibold ${/Borrador/.test(err)?"border-forza bg-forza-suave text-carbon":"border-red-500 bg-red-50 text-red-700"}`}>{err}</p>}
+      </div>
+      <div className="sticky bottom-0 flex flex-wrap justify-end gap-2 border-t border-stone-200 bg-white px-5 py-3" style={{paddingBottom:"calc(12px + env(safe-area-inset-bottom,0px))"}}>
+        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-stone-100">Cancelar</button>
+        <button onClick={()=>guardar(false)} disabled={ocupado} className="rounded-lg border border-stone-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-stone-50 disabled:opacity-40">Guardar borrador</button>
+        <button onClick={()=>guardar(true)} disabled={ocupado} className="rounded-lg border border-forza bg-forza px-5 py-2 text-sm font-bold text-forza-tinta hover:brightness-95 disabled:opacity-40">{ocupado?"Enviando…":"Emitir dictamen"}</button>
+      </div>
+    </div>
+  </div>);
+}
+
 function DetalleIncidencia({id,onClose,onCambio}){
   const [d,setD]=useState(null);const [err,setErr]=useState("");const [txt,setTxt]=useState("");const [ocupado,setOcupado]=useState(false);
   const inp="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
@@ -818,6 +962,9 @@ function DetalleIncidencia({id,onClose,onCambio}){
     catch(e){setErr(e.message);}finally{setOcupado(false);}}
   async function verArchivo(aid){try{const a=await incArchivoLeer(aid);const w=window.open();if(w)w.document.write(`<title>${a.nombre}</title><body style="margin:0;background:#15181C"><embed src="data:${a.mime};base64,${a.datos}" style="width:100%;height:100%"></body>`);}catch(e){setErr(e.message);}}
   async function subirEvidencia(file){try{setOcupado(true);const c=await comprimir(file);await incArchivo(id,c.nombre,c.mime,c.b64);cargar();}catch(e){setErr(e.message);}finally{setOcupado(false);}}
+  const [dic,setDic]=useState(null);const [formDic,setFormDic]=useState(false);
+  const cargarDic=React.useCallback(()=>{dicObtener(id).then(setDic).catch(()=>setDic(null));},[id]);
+  useEffect(()=>{cargarDic();},[cargarDic]);
   const esCalidad=USR&&(USR.nivel==="calidad"||USR.nivel==="admin");
   const esSC=USR&&(USR.nivel==="sc"||USR.nivel==="admin");
   return (<div className="fixed inset-0 z-[60] flex justify-end" style={{background:"rgba(10,12,15,.6)"}} onClick={onClose}>
@@ -856,6 +1003,27 @@ function DetalleIncidencia({id,onClose,onCambio}){
             <button onClick={()=>verArchivo(a.id)} className="truncate font-semibold text-carbon underline hover:opacity-70">{a.nombre}</button>
             <span className="shrink-0 text-slate-400">{a.origen==="calidad"?"Calidad":"Servicio a Clientes"} · {fechaInc(a.fecha)}</span></li>))}</ul>}
         </div>
+        <div className="rounded-lg border border-stone-200 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Dictamen de inspección</h3>
+            {esCalidad && d.estado!=="Cerrada" && <button onClick={()=>setFormDic(true)} className="rounded-lg border border-forza bg-forza px-3 py-1.5 text-xs font-bold text-forza-tinta hover:brightness-95">{dic?"Editar dictamen":"Emitir dictamen"}</button>}
+          </div>
+          {!dic?<p className="text-xs text-slate-400">{esCalidad?"Aún no se captura el dictamen.":"Calidad todavía no emite el dictamen."}</p>:
+          <div className="space-y-2">
+            <p className="text-sm"><span className="font-bold mono">{dic.folio}</span> · {dic.tipo_unidad||"—"} {dic.color?`· ${dic.color}`:""} <span className="mono text-xs text-slate-500">{dic.nivs}</span>{dic.emitido?"":" · borrador"}</p>
+            {dic.hallazgos && <p className="text-sm whitespace-pre-line">{dic.hallazgos}</p>}
+            <ul className="divide-y divide-stone-100 text-sm">{(dic.renglones||[]).map((r,i)=>(<li key={i} className="flex items-start justify-between gap-3 py-1">
+              <span className="min-w-0">{r.detalle}</span>
+              <span className="shrink-0 text-right text-xs"><span className="mono font-semibold">{r.costo==null||r.costo===""?"":dinero(r.costo)}</span><br/><span className="text-slate-400">{r.responsable}</span></span></li>))}</ul>
+            <p className="text-right text-sm font-bold">Subtotal <span className="mono">{dinero(dic.subtotal)}</span> · IVA <span className="mono">{dinero(dic.iva)}</span> · Total <span className="mono text-carbon">{dinero(dic.total)}</span></p>
+            {dic.emitido && <div className="flex flex-wrap gap-2 pt-1">
+              <button onClick={()=>pdfDictamen(d,dic,true)} className="rounded-lg border border-carbon bg-carbon px-3 py-1.5 text-xs font-bold text-white hover:bg-carbon-2">PDF interno (con costos)</button>
+              <button onClick={()=>pdfDictamen(d,dic,false)} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-stone-50">PDF para el cliente</button>
+            </div>}
+            <p className="text-[11px] text-slate-400">{dic.emitido?`Emitido por ${dic.emitido_por||"—"} · ${fechaInc(dic.emitido_en)}`:"Borrador, aún no visible para Servicio a Clientes."}</p>
+          </div>}
+        </div>
+        {formDic && <FormDictamen inc={d} dic={dic} onClose={()=>setFormDic(false)} onListo={()=>{cargarDic();cargar();onCambio&&onCambio();}}/>}
         <div className="rounded-lg border border-stone-200 p-3">
           <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Bitácora</h3>
           <ul className="space-y-1.5">{(d.eventos||[]).map((e,i)=>(<li key={i} className="text-xs">
