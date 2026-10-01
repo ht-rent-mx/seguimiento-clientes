@@ -63,10 +63,31 @@ let SESION_PASS = "";
 const sbJJ = window.supabase.createClient(SB_URL, SB_KEY);
 async function jjRpc(fn,args,reintentos){reintentos=reintentos||3;let ultimo;for(let i=0;i<reintentos;i++){try{const {data,error}=await sbJJ.rpc(fn,args||{});if(error){const m=error.message||"error";if(/acceso/i.test(m))throw new Error("ACCESO: tu contraseña no tiene permiso para esta acción.");throw new Error(m);}return data;}catch(e){ultimo=e;if(String(e.message).startsWith("ACCESO"))break;if(i<reintentos-1)await new Promise(res=>setTimeout(res,800*(i+1)));}}throw ultimo;}
 async function apiLogin(pass){return await jjRpc("jj_login",{p_pass:pass},2);}
-async function apiList(){const d=await jjRpc("jj_list",{p_pass:SESION_PASS});return Array.isArray(d)?d:[];}
-async function apiSave(rec){const nuevo=rec.id==null;const id=await jjRpc("jj_save",{p_pass:SESION_PASS,p_rec:rec},nuevo?1:3);return {ok:true,id:id};}
+async function apiList(){const d=USR?await jjRpc("jj_list_u",uArgs()):await jjRpc("jj_list",{p_pass:SESION_PASS});return Array.isArray(d)?d:[];}
+async function apiSave(rec){const nuevo=rec.id==null;const id=USR?await jjRpc("jj_save_u",uArgs({p_rec:rec}),nuevo?1:3):await jjRpc("jj_save",{p_pass:SESION_PASS,p_rec:rec},nuevo?1:3);return {ok:true,id:id};}
 async function apiBulk(recs){const n=await jjRpc("jj_bulk",{p_pass:SESION_PASS,p_recs:recs});return {ok:true,n:n};}
-async function apiHistorial(id){return await jjRpc("jj_historial",{p_pass:SESION_PASS,p_cliente:id},2);}
+let USR = null; // usuario individual: {correo,pass,nombre,nivel,empresas,categorias}
+const EMP_MAP={HT:"HT Rent",JJ:"JJ Forza","3C":"3C"};
+const empresaLarga=e=>EMP_MAP[String(e||"").trim().toUpperCase()]||String(e||"").trim();
+function uArgs(extra){return Object.assign({p_correo:USR.correo,p_pass:USR.pass},extra||{});}
+async function apiSesion(correo,pass){return await jjRpc("jj_sesion",{p_correo:correo,p_pass:pass},2);}
+async function apiHistorial(id){return USR?await jjRpc("jj_historial_u",uArgs({p_cliente:id}),2):await jjRpc("jj_historial",{p_pass:SESION_PASS,p_cliente:id},2);}
+async function apiCambiarPass(nueva){return await jjRpc("jj_cambiar_pass",{p_correo:USR.correo,p_actual:USR.pass,p_nueva:nueva},1);}
+/* Incidencias (solo con usuario individual) */
+async function incOpciones(empresa){return await jjRpc("jj_inc_opciones",uArgs({p_empresa:empresa}),2);}
+async function incCrear(rec){return await jjRpc("jj_inc_crear",uArgs({p_rec:rec}),1);}
+async function incListar(){const d=await jjRpc("jj_inc_listar",uArgs(),2);return Array.isArray(d)?d:[];}
+async function incDetalle(id){return await jjRpc("jj_inc_detalle",uArgs({p_id:id}),2);}
+async function incEvento(id,accion,comentario){return await jjRpc("jj_inc_evento",uArgs({p_id:id,p_accion:accion,p_comentario:comentario||null}),1);}
+async function incArchivo(id,nombre,mime,datos){return await jjRpc("jj_inc_archivo",uArgs({p_id:id,p_nombre:nombre,p_mime:mime,p_datos:datos}),1);}
+async function incArchivoLeer(aid){return await jjRpc("jj_inc_archivo_leer",uArgs({p_archivo:aid}),2);}
+async function incReporte(){return await jjRpc("jj_inc_reporte",uArgs(),2);}
+const INC_ESTADOS=["Abierta","En revisión","En espera","Resuelta","Cerrada"];
+const INC_COLOR={"Abierta":{chip:"bg-red-50 text-red-700 border-red-200",spine:"bg-red-500"},
+ "En revisión":{chip:"bg-forza-suave text-carbon border-forza",spine:"bg-forza"},
+ "En espera":{chip:"bg-stone-100 text-slate-600 border-stone-300",spine:"bg-slate-400"},
+ "Resuelta":{chip:"bg-emerald-50 text-emerald-700 border-emerald-200",spine:"bg-emerald-500"},
+ "Cerrada":{chip:"bg-slate-100 text-slate-500 border-stone-300",spine:"bg-slate-700"}};
 async function apiUpload(cliente,doc,nombre,mime,b64){const r=await fetch(UPLOAD_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:UPLOAD_TOKEN,action:"upload",cliente:cliente,doc:doc,nombre:nombre,mime:mime,data:b64})});const txt=await r.text();let j;try{j=JSON.parse(txt);}catch(e){throw new Error("Google Drive no respondió. Intenta de nuevo en un momento.");}if(!j.ok)throw new Error(j.error||"error");return j;}
 function comprimir(file,maxPx,q){maxPx=maxPx||1600;q=q||0.72;return new Promise((res,rej)=>{
   if(!/^image\//.test(file.type)){const fr=new FileReader();fr.onload=()=>res({b64:String(fr.result).split(",")[1],mime:file.type||"application/octet-stream",nombre:file.name||"archivo"});fr.onerror=rej;fr.readAsDataURL(file);return;}
@@ -81,6 +102,7 @@ function comprimir(file,maxPx,q){maxPx=maxPx||1600;q=q||0.72;return new Promise(
 const EJEC_DEF=["Sara Alonso","Aracely de Ochoa","Omar Guevara","Mary Morales"];
 const CLI_DEF={"Sara Alonso":[],"Aracely de Ochoa":[],"Omar Guevara":[],"Mary Morales":[]};
 const EMPRESAS=["HT","JJ","3C"];
+const PATIOS=["Monterrey - HT","Monterrey - JJ","Monterrey - Tractomundo","Escobedo - JJ Forza","Cadereyta - JJ Forza","Allende - JJ Forza","Lazaro - JJ","Manzanillo - Alligar","Manzanillo - JJ","Veracruz - JJ","Veracruz - Fernandez","Altamira - JJ","Queretaro - JJ/HT"];
 const TIPO_CLIENTE=["Cliente Nuevo","Cliente Recurrente"];
 const TIPOVENTA=["Arrendamiento","Financiamiento","Contado","Renta Pura"];
 const TIPO_CONTRATO=["Notariado","Convencional"];
@@ -232,12 +254,20 @@ function construirDashboard(registros,ancE,ancJ){const R=[];const cnt=fn=>regist
 function construirLibro(registros){const wb=XLSX.utils.book_new();const de=detallePor(registros,ESTATUS,r=>r.estatus);const ej=[...new Set(registros.map(r=>r.ejecutivo).filter(Boolean))].sort();const dj=detallePor(registros,ej,r=>r.ejecutivo);const wsDash=construirDashboard(registros,de.anchor,dj.anchor);const wsCli=XLSX.utils.json_to_sheet(registros.map(filaCliente));const wsDE=XLSX.utils.aoa_to_sheet(de.aoa.length?de.aoa:[["Sin datos"]]);const wsDJ=XLSX.utils.aoa_to_sheet(dj.aoa.length?dj.aoa:[["Sin datos"]]);XLSX.utils.book_append_sheet(wb,wsDash,"Dashboard");XLSX.utils.book_append_sheet(wb,wsCli,"Clientes");XLSX.utils.book_append_sheet(wb,wsDE,"DetalleEtapa");XLSX.utils.book_append_sheet(wb,wsDJ,"DetalleEjecutivo");return wb;}
 
 function Puerta({onEntrar}){
-  const [v,setV]=useState("");const [err,setErr]=useState("");const [verif,setVerif]=useState(false);
+  const [v,setV]=useState("");const [correo,setCorreo]=useState("");const [err,setErr]=useState("");const [verif,setVerif]=useState(false);
   const inpP="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
-  const probar=async()=>{const p=v.trim();if(!p||verif)return;setVerif(true);setErr("");
-    try{const nivel=await apiLogin(p);
-      if(nivel==="edit"||nivel==="ver"){SESION_PASS=p;onEntrar(nivel);return;}
-      if(nivel==="calidad_edit"||nivel==="calidad_ver"){setErr("Ese acceso es del tablero de incidencias de Calidad, que todavía está en construcción.");return;}
+  const probar=async()=>{const p=v.trim();const c=(correo||"").trim();if(!p||verif)return;setVerif(true);setErr("");
+    try{
+      if(c){ // usuario individual
+        const ses=await apiSesion(c,p);
+        if(!ses){setErr("Ese correo y contraseña no coinciden.");return;}
+        USR={correo:ses.correo,pass:p,nombre:ses.nombre,nivel:ses.nivel,empresas:ses.empresas||[],categorias:ses.categorias||[]};
+        SESION_PASS="";
+        onEntrar(USR.nivel==="sc"||USR.nivel==="admin"?"edit":"incidencias");return;
+      }
+      const nivel=await apiLogin(p);
+      if(nivel==="edit"||nivel==="ver"){USR=null;SESION_PASS=p;onEntrar(nivel);return;}
+      if(nivel==="calidad_edit"||nivel==="calidad_ver"){setErr("El tablero de incidencias se abre con tu correo y tu contraseña personal. Escribe tu correo arriba.");return;}
       setErr("Contraseña incorrecta.");
     }catch(e){setErr("No se pudo conectar con el servidor: "+e.message);}
     finally{setVerif(false);}};
@@ -248,8 +278,11 @@ function Puerta({onEntrar}){
       </div>
       <div className="p-6">
         <div className="mb-4"><h1 className="font-display text-2xl leading-tight text-carbon">Seguimiento a Clientes</h1><p className="text-sm text-slate-500 mt-1">Servicio a Clientes</p></div>
-        <p className="mb-3 text-sm text-slate-500">Escribe tu contraseña para entrar.</p>
-        <input type="password" value={v} autoFocus onChange={e=>{setV(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")probar();}} className={inpP} placeholder="Contraseña"/>
+        <p className="mb-3 text-sm text-slate-500">Entra con tu correo y tu contraseña. Si usas la contraseña del área, deja el correo vacío.</p>
+        <label className="mb-1 block text-xs font-semibold text-slate-600">Correo</label>
+        <input type="email" value={correo} autoFocus autoComplete="username" onChange={e=>{setCorreo(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")probar();}} className={inpP} placeholder="Tu correo de trabajo"/>
+        <label className="mt-3 mb-1 block text-xs font-semibold text-slate-600">Contraseña</label>
+        <input type="password" value={v} autoComplete="current-password" onChange={e=>{setV(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")probar();}} className={inpP} placeholder="Contraseña"/>
         {err && <p className="mt-2 text-xs font-semibold text-red-600">{err}</p>}
         <button onClick={probar} disabled={verif} className="mt-3 w-full rounded-lg border border-forza bg-forza px-4 py-2.5 text-sm font-bold text-forza-tinta hover:brightness-95 disabled:opacity-60">{verif?"Verificando…":"Entrar"}</button>
         <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Con la contraseña de consulta puedes ver toda la información. Para capturar o modificar necesitas la contraseña de edición.</p>
@@ -303,6 +336,8 @@ function seccDe(r){if(esCanceladoCli(r))return "cancelados";if(entregaCompletaCl
 function equiposEntregados(r){if(r.entregaModo==="parcial"||r.entregaModo==="completa")return entregadosCli(r);return (r.estatuses||[]).includes("Entregado")?uniEq(r):0;}
 function App(){
   const [modo,setModo]=useState(null);
+  const [incidenciaDe,setIncidenciaDe]=useState(null);
+  const [incs,setIncs]=useState([]);const [incCargando,setIncCargando]=useState(false);const [incErr,setIncErr]=useState("");
   const puedeEditar=modo==="edit";
   const [now,setNow]=useState(Date.now());
   const [registros,setRegistros]=useState(()=>CLOUD?[]:demo(Date.now()).map(normEst));
@@ -323,6 +358,8 @@ function App(){
   const [sync,setSync]=useState("");
 
   useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t);},[]);
+  const cargarIncs=React.useCallback(()=>{if(!USR)return;setIncCargando(true);setIncErr("");incListar().then(d=>{setIncs(d);setIncCargando(false);}).catch(e=>{setIncErr("No se pudieron cargar las incidencias: "+e.message);setIncCargando(false);});},[]);
+  useEffect(()=>{if(modo&&USR)cargarIncs();},[modo,cargarIncs]);
   useEffect(()=>{if(!CLOUD||!modo)return;setCargando(true);setAviso(null);apiList().then(d=>{setRegistros(d.map(normEst));setCargando(false);}).catch(err=>{setCargando(false);setAviso({tipo:"error",texto:"No se pudo cargar de la nube: "+err.message});});},[modo]);
 
   function aplicarIA(res){setFEjec(res.ejec||"Todos");setFEstatus(res.estatus||"");setBusca((res.busca&&res.busca.length)?res.busca.join(" "):"");setFCli&&setFCli("Todos");}
@@ -386,6 +423,7 @@ function App(){
   }
 
   if(!modo) return <Puerta onEntrar={setModo}/>;
+  if(modo==="incidencias") return <PantallaIncidencias onSalir={()=>{USR=null;SESION_PASS="";setModo(null);}}/>;
 
   return (
     <div className="min-h-screen text-slate-800" style={{fontFamily:"ui-sans-serif,system-ui,'Segoe UI',Roboto,sans-serif"}}>
@@ -438,7 +476,7 @@ function App(){
         <TableroEtapas counts={etapaCounts} total={porEjec.length} activo={fEstatus} onPick={est=>{setFEstatus(fEstatus===est?"":est);setVista("clientes");}}/>
 
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <div className="flex flex-wrap gap-1 border-b-[3px] border-carbon"><Tab activo={vista==="clientes"} onClick={()=>setVista("clientes")}>Clientes</Tab><Tab activo={vista==="tablero"} onClick={()=>setVista("tablero")}>Tablero</Tab><Tab activo={vista==="lista"} onClick={()=>setVista("lista")}>Lista</Tab><Tab activo={vista==="dia"} onClick={()=>setVista("dia")}>Día</Tab></div>
+          <div className="flex flex-wrap gap-1 border-b-[3px] border-carbon"><Tab activo={vista==="clientes"} onClick={()=>setVista("clientes")}>Clientes</Tab><Tab activo={vista==="tablero"} onClick={()=>setVista("tablero")}>Tablero</Tab><Tab activo={vista==="lista"} onClick={()=>setVista("lista")}>Lista</Tab><Tab activo={vista==="dia"} onClick={()=>setVista("dia")}>Día</Tab>{USR && <Tab activo={vista==="incidencias"} onClick={()=>setVista("incidencias")}>Incidencias</Tab>}</div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5"><Icon name="search" size={14} className="text-slate-400"/><input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar cliente, NIV, folio, tel…" className="py-1.5 text-sm outline-none w-48"/></div>
             <Select value={fEjec} onChange={cambiarEjec} options={["Todos",...ejecutivos]} prefijo="Ejecutivo"/>
@@ -457,14 +495,16 @@ function App(){
           const lista=mostrados.filter(r=>seccDe(r)===subLista);
           return (<div>
             <div className="mb-3 inline-flex rounded-xl border border-stone-300 bg-white p-0.5">{sub.map(([k,l,n,col])=>(<button key={k} onClick={()=>setSubLista(k)} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${subLista===k?"bg-stone-800 text-white":`${col} hover:bg-stone-100`}`}>{l} <span className={`ml-0.5 ${subLista===k?"text-white/70":"text-slate-400"}`}>({n})</span></button>))}</div>
-            {lista.length?<div className="grid gap-3 sm:grid-cols-2">{lista.map(r=><Tarjeta key={r.id} r={r} now={now} onEdit={setEditando} onListo={marcarLlamada}/>)}</div>:<Vacio texto={subLista==="activos"?"No hay clientes en seguimiento con los filtros actuales.":subLista==="entregados"?"No hay clientes entregados con los filtros actuales.":subLista==="devueltos"?"No hay clientes devueltos a comercial con los filtros actuales.":"No hay clientes cancelados con los filtros actuales."}/>}
+            {lista.length?<div className="grid gap-3 sm:grid-cols-2">{lista.map(r=><Tarjeta key={r.id} r={r} now={now} onEdit={setEditando} onListo={marcarLlamada} onIncidencia={setIncidenciaDe}/>)}</div>:<Vacio texto={subLista==="activos"?"No hay clientes en seguimiento con los filtros actuales.":subLista==="entregados"?"No hay clientes entregados con los filtros actuales.":subLista==="devueltos"?"No hay clientes devueltos a comercial con los filtros actuales.":"No hay clientes cancelados con los filtros actuales."}/>}
           </div>);
         })()}
         {vista==="tablero" && <VistaTablero registros={visibles} now={now} onEdit={setEditando}/>}
         {vista==="lista" && <VistaLista registros={visibles} now={now} onEdit={setEditando}/>}
         {vista==="dia" && <AgendaDia dia={dia} setDia={setDia} agenda={agenda} onEdit={setEditando}/>}
+        {vista==="incidencias" && USR && <Incidencias incs={incs} cargando={incCargando} err={incErr} onRecargar={cargarIncs}/>}
       </main>
 
+      {incidenciaDe && <FormIncidencia cliente={incidenciaDe} onClose={()=>setIncidenciaDe(null)} onCreada={()=>{cargarIncs();setVista("incidencias");}}/>}
       {editando && <Modal puedeEditar={puedeEditar} inicial={editando==="nuevo"?null:editando} fEjec={fEjec} ejecutivos={ejecutivos} cliPorEjec={cliPorEjec} onClose={()=>setEditando(null)} onSave={guardar}/>}
     </div>
   );
@@ -524,7 +564,7 @@ function EmpresaTag({empresa}){return empresa?<span className="rounded bg-slate-
 function ClienteTipoTag({tc}){const rec=tc==="Cliente Recurrente";return <span className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold ${rec?"bg-teal-100 text-teal-700":"bg-sky-100 text-sky-700"}`}><Icon name="user" size={9}/>{rec?"RECURRENTE":"NUEVO"}</span>;}
 
 /* ---------- Tarjeta ---------- */
-function Tarjeta({r,now,onEdit,onListo}){
+function Tarjeta({r,now,onEdit,onListo,onIncidencia}){
   const c=ESTATUS_COLOR[r.estatus];const e=estadoCompromiso(r,now);const eqt=equiposTxt(r);const u=ultInter(r);const nb=(r.bitacora||[]).length;
   const ring=e==="vencido"?"ring-2 ring-red-400 border-red-300":e==="proximo"?"ring-2 ring-amber-400 border-amber-300":"border-stone-200";
   return (<div className={`group relative w-full overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-md ${ring}`}><span className={`absolute inset-y-0 left-0 w-1.5 ${c.spine}`}></span>
@@ -539,7 +579,7 @@ function Tarjeta({r,now,onEdit,onListo}){
       {r.entregaFabrica && !(r.estatuses||[]).includes("Entregado") && <div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-700"><Icon name="truck" size={14}/> Fábrica/taller: {largo(r.entregaFabrica)}</div>}
         {r.entregaProgramada && (r.estatus==="Entregado"?<div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-teal-300 bg-teal-50 px-2.5 py-1.5 text-xs font-bold text-teal-700"><Icon name="check" size={14}/> Entregado el {largo(r.entregaProgramada)}</div>:<div className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-700"><Icon name="truck" size={14}/> Entrega programada: {largo(r.entregaProgramada)}</div>)}
     </button>
-    <div className="flex items-center gap-3 border-t border-stone-100 px-4 py-1.5 text-xs text-slate-500">{r.telefono && <a href={`tel:${r.telefono.replace(/[^0-9+]/g,"")}`} className="inline-flex items-center gap-1 hover:text-slate-800"><Icon name="phone" size={12}/>{r.telefono}</a>}{r.correo && <a href={`mailto:${r.correo}`} className="inline-flex items-center gap-1 hover:text-slate-800 truncate"><Icon name="mail" size={12}/>{r.correo}</a>}<button onClick={()=>onEdit(r)} className="ml-auto inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-slate-900"><Icon name="plus" size={12}/> Interacción</button></div>
+    <div className="flex items-center gap-3 border-t border-stone-100 px-4 py-1.5 text-xs text-slate-500">{r.telefono && <a href={`tel:${r.telefono.replace(/[^0-9+]/g,"")}`} className="inline-flex items-center gap-1 hover:text-slate-800"><Icon name="phone" size={12}/>{r.telefono}</a>}{r.correo && <a href={`mailto:${r.correo}`} className="inline-flex items-center gap-1 hover:text-slate-800 truncate"><Icon name="mail" size={12}/>{r.correo}</a>}<button onClick={()=>onEdit(r)} className="ml-auto inline-flex items-center gap-1 font-semibold text-slate-600 hover:text-slate-900"><Icon name="plus" size={12}/> Interacción</button>{onIncidencia && USR && (USR.nivel==="sc"||USR.nivel==="admin") && <button onClick={()=>onIncidencia(r)} className="ml-2 inline-flex items-center gap-1 rounded border border-forza bg-forza px-2 py-0.5 text-[11px] font-bold text-forza-tinta hover:brightness-95"><Icon name="alert" size={11}/> Incidencia</button>}</div>
     {e && (<div className={`flex items-center justify-between gap-2 border-t px-4 py-2 ${e==="vencido"?"border-red-200 bg-red-50":e==="proximo"?"border-amber-200 bg-amber-50":"border-sky-100 bg-sky-50"}`}><span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${e==="vencido"?"text-red-700":e==="proximo"?"text-amber-700":"text-sky-700"}`}><Icon name="alarm" size={13}/>{e==="vencido"?`Llamada vencida · era ${fechaHora(r.compromiso)}`:e==="proximo"?`Llamar pronto · ${hora(r.compromiso)}`:`Llamada agendada · ${fechaHora(r.compromiso)}`}</span><button onClick={()=>onListo(r.id)} className="inline-flex items-center gap-1 rounded-md border border-stone-300 bg-white px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-stone-50"><Icon name="check" size={12}/> Listo</button></div>)}
   </div>);
 }
@@ -678,6 +718,266 @@ function HistorialCambios({id}){
      items===null?<p className="text-xs text-slate-400">Cargando…</p>:
      items.length===0?<p className="text-xs text-slate-400">Sin cambios registrados desde la migración.</p>:
      <ul className="space-y-1">{items.slice(0,10).map((c,i)=>(<li key={i} className="flex flex-wrap items-baseline gap-x-2 text-xs"><span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${c.accion==="alta"?"bg-forza-suave text-carbon":"bg-slate-100 text-slate-600"}`}>{c.accion==="alta"?"Alta":"Edición"}</span><span className="text-slate-500">{fmt(c.fecha)}</span>{c.usuario&&<span className="font-semibold text-slate-700">{c.usuario}</span>}</li>))}</ul>}
+  </div>);
+}
+
+
+/* ================= INCIDENCIAS DE CALIDAD ================= */
+const EMPRESA_LARGA={"HT":"HT Rent","JJ":"JJ Forza","3C":"3C","HT RENT":"HT Rent","JJ FORZA":"JJ Forza"};
+function empresaDe(r){const e=String(r&&r.empresa||"").trim();return EMPRESA_LARGA[e.toUpperCase()]||e;}
+const fechaInc=s=>{if(!s)return"";const d=new Date(s);return `${d.getDate()} ${MESES[d.getMonth()].slice(0,3)} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+
+/* ---- Formulario: se abre desde la tarjeta o la ficha del cliente ---- */
+function FormIncidencia({cliente,onClose,onCreada}){
+  const empresa=empresaDe(cliente);
+  const [opciones,setOpciones]=useState(null);
+  const [cat,setCat]=useState("");const [subs,setSubs]=useState([]);
+  const [equipos,setEquipos]=useState([]);
+  const [f,setF]=useState({descripcion:"",requerimiento:"",ocurrio:HOY,ubicacion:cliente.patioEntrega||""});
+  const [archivos,setArchivos]=useState([]);
+  const [msg,setMsg]=useState("");const [guardando,setGuardando]=useState(false);
+  const inp="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
+  useEffect(()=>{let vivo=true;incOpciones(empresa).then(o=>{if(!vivo)return;setOpciones(o||{});const cs=Object.keys(o||{});if(cs.length===1)setCat(cs[0]);}).catch(e=>setMsg("No se pudieron cargar las opciones: "+e.message));return()=>{vivo=false;};},[empresa]);
+  const lista=(cliente.equipos||[]).filter(e=>e.tipo);
+  const nivs=String(cliente.niv||"").split(/[\n,]+/).map(x=>x.trim()).filter(Boolean);
+  const toggleEq=i=>setEquipos(p=>p.includes(i)?p.filter(x=>x!==i):[...p,i]);
+  const toggleSub=sc=>setSubs(p=>p.includes(sc)?p.filter(x=>x!==sc):[...p,sc]);
+  async function agregarArchivo(file){try{const c=await comprimir(file);setArchivos(p=>[...p,c]);}catch(e){setMsg("No se pudo leer el archivo: "+e.message);}}
+  const valido=cat&&subs.length>0&&f.descripcion.trim().length>5;
+  async function enviar(){
+    if(!valido||guardando)return;setGuardando(true);setMsg("");
+    try{
+      const eqs=equipos.map(i=>({tipo:lista[i].tipo,marca:lista[i].marca||"",anio:lista[i].anio||"",condicion:lista[i].condicion||"",niv:nivs[i]||""}));
+      const r=await incCrear({cliente_id:cliente.id,cliente:cliente.cliente,empresa:empresa,equipos:eqs,
+        categoria:cat,subcategorias:subs,descripcion:f.descripcion.trim(),requerimiento:f.requerimiento.trim(),
+        ocurrio:f.ocurrio,ubicacion:f.ubicacion});
+      for(const a of archivos){await incArchivo(r.id,a.nombre,a.mime,a.b64);}
+      onCreada&&onCreada(r);onClose();
+    }catch(e){setMsg("No se pudo levantar la incidencia: "+e.message);}
+    finally{setGuardando(false);}
+  }
+  return (<div className="fixed inset-0 z-[60] flex justify-end" style={{background:"rgba(10,12,15,.6)"}} onClick={onClose}>
+    <div className="h-full w-full sm:max-w-xl overflow-y-auto bg-white shadow-2xl" onClick={e=>e.stopPropagation()}>
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b-4 border-forza bg-carbon px-5 py-3.5">
+        <div className="min-w-0"><h2 className="font-display text-xl text-white leading-tight truncate">Levantar incidencia</h2>
+          <p className="text-[12px] text-plata truncate">{cliente.cliente} · {empresa}</p></div>
+        <button onClick={onClose} aria-label="Cerrar" className="grid h-9 w-9 shrink-0 place-items-center rounded border border-carbon-edge text-white hover:bg-carbon-2"><Icon name="x" size={18}/></button>
+      </div>
+      <div className="p-5 space-y-4">
+        <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Equipos involucrados</span>
+          {lista.length===0?<p className="text-xs text-slate-400">Este cliente no tiene equipos capturados.</p>:
+          <div className="space-y-1.5">{lista.map((e,i)=>(
+            <button key={i} onClick={()=>toggleEq(i)} className={`flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${equipos.includes(i)?"border-carbon bg-forza-suave":"border-stone-300 hover:bg-stone-50"}`}>
+              <span className={`grid h-5 w-5 shrink-0 place-items-center rounded border ${equipos.includes(i)?"border-carbon bg-carbon text-white":"border-stone-300 text-transparent"}`}><Icon name="check" size={12}/></span>
+              <span className="min-w-0"><span className="font-semibold">{e.cantidad||1}× {e.tipo}</span>{e.marca?" · "+e.marca:""}{e.anio?" "+e.anio:""}
+                {nivs[i]&&<span className="block text-[11px] text-slate-500 mono">NIV: {nivs[i]}</span>}</span>
+            </button>))}</div>}
+        </div>
+        <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo de incidencia</span>
+          {opciones===null?<p className="text-xs text-slate-400">Cargando opciones…</p>:
+           Object.keys(opciones).length===0?<p className="text-xs text-red-600">Para {empresa} no hay tipos de incidencia configurados.</p>:
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2">{Object.keys(opciones).map(c=>(
+              <button key={c} onClick={()=>{setCat(c);setSubs([]);}} className={`rounded-lg border px-2 py-2 text-sm font-medium ${cat===c?"border-carbon bg-carbon text-white":"border-stone-300 text-slate-600 hover:bg-stone-50"}`}>{c}</button>))}</div>
+            {cat && <div className="flex flex-wrap gap-1.5">{(opciones[cat]||[]).map(sc=>(
+              <button key={sc} onClick={()=>toggleSub(sc)} className={`rounded-full border px-3 py-1 text-xs font-semibold ${subs.includes(sc)?"border-forza bg-forza text-forza-tinta":"border-stone-300 text-slate-600 hover:bg-stone-50"}`}>{subs.includes(sc)?"✓ ":""}{sc}</button>))}</div>}
+            {cat && <p className="text-[11px] text-slate-400">Puedes marcar más de una.</p>}
+          </div>}
+        </div>
+        <Campo label="¿Qué ocurrió?"><textarea rows={4} value={f.descripcion} onChange={e=>setF({...f,descripcion:e.target.value})} placeholder="Describe el desperfecto o el detalle con el equipo…" className={inp}/></Campo>
+        <Campo label="¿Qué se requiere de Calidad? (opcional)"><textarea rows={2} value={f.requerimiento} onChange={e=>setF({...f,requerimiento:e.target.value})} className={inp}/></Campo>
+        <div className="grid grid-cols-2 gap-3">
+          <Campo label="Fecha en que ocurrió"><input type="date" value={f.ocurrio} onChange={e=>setF({...f,ocurrio:e.target.value})} className={inp}/></Campo>
+          <Campo label="Ubicación"><select value={f.ubicacion} onChange={e=>setF({...f,ubicacion:e.target.value})} className={inp}><option value="">— Selecciona —</option>{PATIOS.map(p=><option key={p}>{p}</option>)}<option>Con el cliente</option><option>En tránsito</option></select></Campo>
+        </div>
+        <div><span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Evidencias</span>
+          <div className="flex flex-wrap gap-2">
+            <label className="cursor-pointer rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100">📷 Cámara<input type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>{const fl=e.target.files[0];if(fl)agregarArchivo(fl);e.target.value="";}}/></label>
+            <label className="cursor-pointer rounded-md border border-stone-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-stone-50">📎 Archivo o PDF<input type="file" accept="image/*,application/pdf" className="hidden" onChange={e=>{const fl=e.target.files[0];if(fl)agregarArchivo(fl);e.target.value="";}}/></label>
+          </div>
+          {archivos.length>0 && <ul className="mt-2 space-y-1">{archivos.map((a,i)=>(<li key={i} className="flex items-center justify-between rounded border border-stone-200 px-2 py-1 text-xs"><span className="truncate">{a.nombre}</span><button onClick={()=>setArchivos(p=>p.filter((_,j)=>j!==i))} className="text-slate-400 hover:text-red-500"><Icon name="x" size={13}/></button></li>))}</ul>}
+        </div>
+        {msg && <p className="rounded-lg border border-l-[6px] border-red-500 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{msg}</p>}
+      </div>
+      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-stone-200 bg-white px-5 py-3">
+        <button onClick={onClose} className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-stone-100">Cancelar</button>
+        <button onClick={enviar} disabled={!valido||guardando} className="rounded-lg border border-forza bg-forza px-5 py-2 text-sm font-bold text-forza-tinta hover:brightness-95 disabled:opacity-40">{guardando?"Enviando…":"Levantar incidencia"}</button>
+      </div>
+    </div>
+  </div>);
+}
+
+/* ---- Detalle y gestión de una incidencia ---- */
+function DetalleIncidencia({id,onClose,onCambio}){
+  const [d,setD]=useState(null);const [err,setErr]=useState("");const [txt,setTxt]=useState("");const [ocupado,setOcupado]=useState(false);
+  const inp="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
+  const cargar=React.useCallback(()=>{incDetalle(id).then(setD).catch(e=>setErr(e.message));},[id]);
+  useEffect(()=>{cargar();},[cargar]);
+  async function accion(a){if(ocupado)return;setOcupado(true);setErr("");
+    try{await incEvento(id,a,txt.trim()||null);setTxt("");cargar();onCambio&&onCambio();}
+    catch(e){setErr(e.message);}finally{setOcupado(false);}}
+  async function verArchivo(aid){try{const a=await incArchivoLeer(aid);const w=window.open();if(w)w.document.write(`<title>${a.nombre}</title><body style="margin:0;background:#15181C"><embed src="data:${a.mime};base64,${a.datos}" style="width:100%;height:100%"></body>`);}catch(e){setErr(e.message);}}
+  async function subirEvidencia(file){try{setOcupado(true);const c=await comprimir(file);await incArchivo(id,c.nombre,c.mime,c.b64);cargar();}catch(e){setErr(e.message);}finally{setOcupado(false);}}
+  const esCalidad=USR&&(USR.nivel==="calidad"||USR.nivel==="admin");
+  const esSC=USR&&(USR.nivel==="sc"||USR.nivel==="admin");
+  return (<div className="fixed inset-0 z-[60] flex justify-end" style={{background:"rgba(10,12,15,.6)"}} onClick={onClose}>
+    <div className="h-full w-full sm:max-w-2xl overflow-y-auto bg-white shadow-2xl" onClick={e=>e.stopPropagation()}>
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b-4 border-forza bg-carbon px-5 py-3.5">
+        <div className="min-w-0"><h2 className="font-display text-xl text-white leading-tight truncate">{d?d.folio:"Incidencia"}</h2>
+          {d && <p className="text-[12px] text-plata truncate">{d.cliente} · {d.empresa}</p>}</div>
+        <button onClick={onClose} aria-label="Cerrar" className="grid h-9 w-9 shrink-0 place-items-center rounded border border-carbon-edge text-white hover:bg-carbon-2"><Icon name="x" size={18}/></button>
+      </div>
+      {!d?<p className="p-5 text-sm text-slate-400">Cargando…</p>:
+      <div className="p-5 space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold ${INC_COLOR[d.estado].chip}`}>{d.estado}</span>
+          <span className="text-xs font-semibold text-slate-600">{d.categoria} · {(d.subcategorias||[]).join(", ")}</span>
+          <span className={`mono text-xs font-bold ${d.vencida?"text-red-600":"text-slate-500"}`}>{d.dias} día(s) en gestión{d.plazo_dias?` · plazo ${d.plazo_dias}`:""}{d.vencida?" · VENCIDA":""}</span>
+        </div>
+        {(d.equipos||[]).length>0 && <div className="rounded-lg border border-stone-200 p-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Equipos</h3>
+          <ul className="space-y-0.5 text-sm">{d.equipos.map((e,i)=>(<li key={i}>{e.tipo}{e.marca?" · "+e.marca:""}{e.anio?" "+e.anio:""}{e.niv?<span className="mono text-xs text-slate-500"> · NIV {e.niv}</span>:null}</li>))}</ul>
+        </div>}
+        <div className="rounded-lg border border-stone-200 p-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-1">Descripción</h3>
+          <p className="text-sm whitespace-pre-line">{d.descripcion}</p>
+          {d.requerimiento && <p className="mt-2 text-sm"><span className="font-semibold">Se requiere: </span>{d.requerimiento}</p>}
+          <p className="mt-2 text-[11px] text-slate-400">Levantó {d.levanto_nombre} · {fechaInc(d.creada)}{d.ocurrio?` · ocurrió ${d.ocurrio}`:""}{d.ubicacion?` · ${d.ubicacion}`:""}</p>
+        </div>
+        {d.resolucion && <div className="rounded-lg border border-l-[6px] border-emerald-500 bg-emerald-50 p-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-emerald-700 mb-1">Resolución de Calidad</h3>
+          <p className="text-sm whitespace-pre-line">{d.resolucion}</p></div>}
+        <div className="rounded-lg border border-stone-200 p-3">
+          <div className="flex items-center justify-between mb-2"><h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Evidencias ({(d.adjuntos||[]).length})</h3>
+            {USR&&USR.nivel!=="monitor" && <label className="cursor-pointer rounded-md border border-stone-300 px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-stone-50">📎 Agregar<input type="file" accept="image/*,application/pdf" className="hidden" onChange={e=>{const fl=e.target.files[0];if(fl)subirEvidencia(fl);e.target.value="";}}/></label>}
+          </div>
+          {(d.adjuntos||[]).length===0?<p className="text-xs text-slate-400">Sin evidencias.</p>:
+          <ul className="space-y-1">{d.adjuntos.map(a=>(<li key={a.id} className="flex items-center justify-between gap-2 text-xs">
+            <button onClick={()=>verArchivo(a.id)} className="truncate font-semibold text-carbon underline hover:opacity-70">{a.nombre}</button>
+            <span className="shrink-0 text-slate-400">{a.origen==="calidad"?"Calidad":"Servicio a Clientes"} · {fechaInc(a.fecha)}</span></li>))}</ul>}
+        </div>
+        <div className="rounded-lg border border-stone-200 p-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Bitácora</h3>
+          <ul className="space-y-1.5">{(d.eventos||[]).map((e,i)=>(<li key={i} className="text-xs">
+            <span className="font-semibold text-slate-700">{e.nombre||"—"}</span> <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{e.accion}</span> <span className="text-slate-400">{fechaInc(e.fecha)}</span>
+            {e.comentario && <p className="text-slate-600 whitespace-pre-line">{e.comentario}</p>}</li>))}</ul>
+        </div>
+        {USR&&USR.nivel!=="monitor"&&d.estado!=="Cerrada" && <div className="rounded-lg border border-stone-200 p-3 space-y-2">
+          <textarea rows={3} value={txt} onChange={e=>setTxt(e.target.value)} placeholder="Escribe un comentario o la resolución…" className={inp}/>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={()=>accion("comentar")} disabled={ocupado||!txt.trim()} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-stone-50 disabled:opacity-40">Comentar</button>
+            {esCalidad&&d.estado==="Abierta" && <button onClick={()=>accion("tomar")} disabled={ocupado} className="rounded-lg border border-carbon bg-carbon px-3 py-1.5 text-xs font-bold text-white hover:bg-carbon-2">Tomar incidencia</button>}
+            {esCalidad&&d.estado==="En revisión" && <button onClick={()=>accion("espera")} disabled={ocupado} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-stone-50">Poner en espera</button>}
+            {esCalidad&&d.estado==="En espera" && <button onClick={()=>accion("reanudar")} disabled={ocupado} className="rounded-lg border border-stone-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-stone-50">Reanudar</button>}
+            {esCalidad&&(d.estado==="En revisión"||d.estado==="En espera") && <button onClick={()=>accion("resolver")} disabled={ocupado||!txt.trim()} title="Escribe la resolución" className="rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:brightness-95 disabled:opacity-40">Marcar resuelta</button>}
+            {esSC&&d.estado==="Resuelta" && <button onClick={()=>accion("cerrar")} disabled={ocupado} className="rounded-lg border border-forza bg-forza px-3 py-1.5 text-xs font-bold text-forza-tinta hover:brightness-95">Cerrar incidencia</button>}
+            {esSC&&d.estado==="Resuelta" && <button onClick={()=>accion("reabrir")} disabled={ocupado} className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">Reabrir</button>}
+          </div>
+        </div>}
+        {err && <p className="rounded-lg border border-l-[6px] border-red-500 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{err}</p>}
+      </div>}
+    </div>
+  </div>);
+}
+
+/* ---- Tablero + reporte ---- */
+function Incidencias({incs,cargando,err,onRecargar}){
+  const [sel,setSel]=useState(null);const [vistaI,setVistaI]=useState("tablero");const [rep,setRep]=useState(null);const [repErr,setRepErr]=useState("");
+  useEffect(()=>{if(vistaI==="reporte"&&!rep)incReporte().then(setRep).catch(e=>setRepErr(e.message));},[vistaI,rep]);
+  const vencidas=(incs||[]).filter(i=>i.vencida).length;
+  const abiertas=(incs||[]).filter(i=>i.estado!=="Cerrada"&&i.estado!=="Resuelta").length;
+  function exportar(){
+    const filas=(incs||[]).map(i=>({"Folio":i.folio,"Cliente":i.cliente,"Empresa":i.empresa,"Categoría":i.categoria,
+      "Subcategorías":(i.subcategorias||[]).join(", "),"Estado":i.estado,"Días en gestión":i.dias,"Plazo":i.plazo_dias||"",
+      "Vencida":i.vencida?"SI":"","Levantó":i.levanto_nombre||"","Atiende":i.atiende_nombre||"",
+      "Creada":String(i.creada||"").slice(0,10),"Resuelta":String(i.resuelta||"").slice(0,10),"Cerrada":String(i.cerrada||"").slice(0,10),
+      "Equipos":(i.equipos||[]).map(e=>e.tipo+(e.niv?" "+e.niv:"")).join(" ; "),"Descripción":i.descripcion,"Resolución":i.resolucion||""}));
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(filas),"Incidencias");
+    XLSX.writeFile(wb,"incidencias_jjforza.xlsx");
+  }
+  return (<div>
+    <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+      <div className="flex flex-wrap gap-1 border-b-[3px] border-carbon">
+        <Tab activo={vistaI==="tablero"} onClick={()=>setVistaI("tablero")}>Tablero</Tab>
+        <Tab activo={vistaI==="reporte"} onClick={()=>{setRep(null);setVistaI("reporte");}}>Histórico</Tab>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold text-slate-500">{abiertas} abierta(s){vencidas>0?` · ${vencidas} vencida(s)`:""}</span>
+        <button onClick={onRecargar} className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:border-slate-400">Recargar</button>
+        <button onClick={exportar} className="inline-flex items-center gap-1.5 rounded-lg border border-carbon-edge bg-carbon px-3 py-1.5 text-sm font-semibold text-white hover:bg-carbon-2"><Icon name="download" size={15}/> Excel</button>
+      </div>
+    </div>
+    {err && <div className="mb-4 rounded-lg border border-l-[6px] border-red-500 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{err}</div>}
+    {cargando && <p className="text-sm text-slate-400">Cargando incidencias…</p>}
+    {vistaI==="tablero" && !cargando && ((incs||[]).length===0
+      ? <Vacio texto="Todavía no hay incidencias levantadas."/>
+      : <div className="flex gap-3 overflow-x-auto pb-2">{INC_ESTADOS.map(est=>{const items=(incs||[]).filter(i=>i.estado===est);return (
+        <div key={est} className="min-w-[240px] flex-1">
+          <div className="flex items-center gap-2 mb-2 px-1"><span className={`h-2 w-2 rounded-full ${INC_COLOR[est].spine}`}></span>
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-600">{est}</h3><span className="ml-auto text-xs text-slate-400 mono">{items.length}</span></div>
+          <div className="space-y-2">{items.map(i=>(
+            <button key={i.id} onClick={()=>setSel(i.id)} className={`w-full rounded-lg border bg-white p-2.5 text-left hover:shadow-sm ${i.vencida?"border-red-300 ring-1 ring-red-200":"border-stone-200"}`}>
+              <div className="flex items-center justify-between gap-2"><span className="mono text-xs font-bold text-carbon">{i.folio}</span>
+                <span className={`mono text-[11px] font-bold ${i.vencida?"text-red-600":"text-slate-400"}`}>{i.dias}d</span></div>
+              <p className="mt-0.5 text-sm font-semibold text-slate-900 truncate">{i.cliente}</p>
+              <p className="text-[11px] text-slate-500">{i.empresa} · {i.categoria}</p>
+              <p className="mt-1 text-xs text-slate-600 line-clamp-2" style={{display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{i.descripcion}</p>
+              {(i.subcategorias||[]).length>0 && <div className="mt-1 flex flex-wrap gap-1">{i.subcategorias.map(sc=><span key={sc} className="rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600">{sc}</span>)}</div>}
+            </button>))}
+            {items.length===0 && <div className="rounded-lg border border-dashed border-stone-300 py-6 text-center text-xs text-slate-400">—</div>}
+          </div>
+        </div>);})}</div>)}
+    {vistaI==="reporte" && (repErr?<p className="text-sm text-red-600">{repErr}</p>:!rep?<p className="text-sm text-slate-400">Cargando histórico…</p>:
+      <div className="space-y-5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+          <Kpi icon="clip" label="Incidencias totales" valor={rep.total} tono="text-carbon"/>
+          <Kpi icon="alarm" label="Abiertas" valor={rep.abiertas} tono="text-amber-600"/>
+          <Kpi icon="alert" label="Vencidas" valor={rep.vencidas} tono="text-red-600"/>
+          <Kpi icon="clock" label="Días prom. a resolver" valor={rep.dias_promedio_resolucion==null?"—":rep.dias_promedio_resolucion} tono="text-slate-900"/>
+          <Kpi icon="check" label="Días prom. a cerrar" valor={rep.dias_promedio_cierre==null?"—":rep.dias_promedio_cierre} tono="text-emerald-600"/>
+        </div>
+        <div className="grid gap-4 md:grid-cols-3">
+          {[["Por estado",rep.por_estado],["Por empresa",rep.por_empresa],["Por categoría",rep.por_categoria]].map(([t,o])=>(
+            <div key={t} className="rounded-lg border border-stone-200 bg-white p-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">{t}</h3>
+              {Object.keys(o||{}).length===0?<p className="text-xs text-slate-400">Sin datos.</p>:
+              <ul className="space-y-1">{Object.entries(o).map(([k,v])=>(<li key={k} className="flex justify-between text-sm"><span className="text-slate-600">{k}</span><span className="mono font-bold">{v}</span></li>))}</ul>}
+            </div>))}
+        </div>
+        <div className="rounded-lg border border-stone-200 bg-white p-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Por mes</h3>
+          {Object.keys(rep.por_mes||{}).length===0?<p className="text-xs text-slate-400">Sin datos.</p>:
+          <ul className="space-y-1">{Object.entries(rep.por_mes).sort().map(([k,v])=>(<li key={k} className="flex justify-between text-sm"><span className="text-slate-600">{k}</span><span className="mono font-bold">{v}</span></li>))}</ul>}
+        </div>
+        <div className="rounded-lg border border-stone-200 bg-white p-3">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Las que llevan más tiempo abiertas</h3>
+          {(rep.mas_antiguas||[]).length===0?<p className="text-xs text-slate-400">Ninguna abierta.</p>:
+          <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-stone-50 text-left text-xs uppercase text-slate-500"><tr><th className="px-3 py-2">Folio</th><th className="px-3 py-2">Cliente</th><th className="px-3 py-2">Empresa</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2 text-right">Días</th></tr></thead>
+          <tbody className="divide-y divide-stone-100">{rep.mas_antiguas.map(m=>(<tr key={m.folio}><td className="px-3 py-2 mono font-bold">{m.folio}</td><td className="px-3 py-2">{m.cliente}</td><td className="px-3 py-2">{m.empresa}</td><td className="px-3 py-2">{m.estado}</td><td className="px-3 py-2 text-right mono font-bold">{m.dias}</td></tr>))}</tbody></table></div>}
+        </div>
+      </div>)}
+    {sel && <DetalleIncidencia id={sel} onClose={()=>setSel(null)} onCambio={onRecargar}/>}
+  </div>);
+}
+
+/* ---- Pantalla completa para Calidad y monitoreo ---- */
+function PantallaIncidencias({onSalir}){
+  const [incs,setIncs]=useState([]);const [cargando,setCargando]=useState(true);const [err,setErr]=useState("");
+  const cargar=React.useCallback(()=>{setCargando(true);setErr("");incListar().then(d=>{setIncs(d);setCargando(false);}).catch(e=>{setErr("No se pudieron cargar las incidencias: "+e.message);setCargando(false);});},[]);
+  useEffect(()=>{cargar();},[cargar]);
+  return (<div className="min-h-screen text-slate-800">
+    <header className="border-b-[5px] border-forza bg-carbon">
+      <div className="mx-auto max-w-6xl px-5 py-3.5 flex items-center justify-between gap-4">
+        <h1 className="font-display text-white leading-none" style={{fontSize:"clamp(20px,3.2vw,32px)"}}>Incidencias de Calidad
+          <small className="block mt-1 font-sans not-italic font-medium text-[13px]" style={{color:"#AEB3B9"}}>{USR?USR.nombre:""}{USR&&USR.nivel==="monitor"?" · solo consulta":""}</small></h1>
+        <div className="marca-jj text-right shrink-0"><b>JJ FORZA</b><span>SEMI-REMOLQUES</span></div>
+      </div>
+    </header>
+    <div className="border-b border-stone-200 bg-white"><div className="mx-auto max-w-6xl px-5 py-2.5 flex items-center gap-3">
+      <span className="flex-1"></span>
+      <button onClick={onSalir} className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-400">Salir</button>
+    </div></div>
+    <main className="mx-auto max-w-6xl px-5 py-5"><Incidencias incs={incs} cargando={cargando} err={err} onRecargar={cargar}/></main>
   </div>);
 }
 
