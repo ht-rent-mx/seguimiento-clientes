@@ -3,13 +3,44 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Seguimiento a Clientes · HT Rent</title>
+<title>Seguimiento a Clientes | JJ Forza</title>
+<meta name="theme-color" content="#15181C" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Saira:ital,wght@1,700;1,800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.0/dist/umd/supabase.js"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+/* Imagen institucional JJ Forza (negro, amarillo y plata del logotipo) */
+tailwind.config={theme:{extend:{
+  fontFamily:{sans:['Barlow','Segoe UI','Roboto','Arial','sans-serif'],display:['Saira','Arial Narrow','Arial','sans-serif']},
+  borderRadius:{md:'3px',lg:'4px',xl:'4px','2xl':'6px'},
+  colors:{
+    carbon:{DEFAULT:'#15181C',2:'#262B31',edge:'#4A525B'},
+    forza:{DEFAULT:'#FFEA19',oscuro:'#C9B800',suave:'#FFF9CC',tinta:'#2A2600'},
+    plata:{DEFAULT:'#C9CDD2',claro:'#EEF0F2'},
+    slate:{50:'#F4F5F6',100:'#E6E8EA',200:'#D2D5D9',300:'#AEB3B9',400:'#848B93',500:'#5F666E',600:'#454B52',700:'#2E343A',800:'#262B31',900:'#15181C'},
+    stone:{50:'#F6F7F8',100:'#ECEEF0',200:'#DCDFE3',300:'#C9CDD2',400:'#9BA2A9',500:'#747B83',600:'#545B63',700:'#2E343A',800:'#15181C',900:'#15181C'}
+  }
+}}};
+</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.6/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<style>body{background:#fafaf9;} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}</style>
+<style>
+:root{--carbon:#15181C;--forza:#FFEA19;--bg:#EEF0F2;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{background:var(--bg);font-family:'Barlow','Segoe UI',Roboto,Arial,sans-serif;font-size:15px;color:#1C2126;-webkit-font-smoothing:antialiased}
+.mono{font-family:Consolas,'Courier New',monospace;font-variant-numeric:tabular-nums}
+.text-2xl.mono,.text-lg.mono{font-family:'Saira','Arial Narrow',Arial,sans-serif;font-style:italic;font-weight:800;letter-spacing:.01em}
+.font-display{font-family:'Saira','Arial Narrow',Arial,sans-serif;font-style:italic;font-weight:800}
+:focus-visible{outline:3px solid var(--forza);outline-offset:2px}
+.marca-jj b{display:block;font-family:'Saira',Arial,sans-serif;font-style:italic;font-weight:800;font-size:clamp(20px,3vw,30px);line-height:1;
+  background:linear-gradient(180deg,#FFFFFF 0%,#C9CDD2 55%,#8E949B 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.marca-jj span{font-family:'Saira',Arial,sans-serif;font-style:italic;font-weight:700;color:var(--forza);font-size:11px;letter-spacing:.14em}
+@media (max-width:600px){.marca-jj{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
 </head>
 <body>
 <div id="root"></div>
@@ -17,21 +48,26 @@
 const { useState, useMemo, useEffect } = React;
 
 /* ============================================================
-   CONFIGURA EL BACKEND  —  INSTALACIÓN DE BETHY (uso exclusivo de ella)
-   1) Pega la URL que termina en /exec de tu Apps Script en API_URL
-   2) Pon EXACTAMENTE el mismo token en API_TOKEN
-   Si las dejas vacías, la app funciona en modo local (sin nube).
+   BACKEND  —  INSTALACIÓN JJ FORZA (Bethy)
+   Datos: Supabase (proyecto plataforma-ht · tablas jj_*).
+   Las contraseñas se validan en el servidor, ya no están en este archivo.
+   Los archivos del expediente siguen subiéndose a Google Drive
+   mediante el Apps Script (UPLOAD_URL / UPLOAD_TOKEN).
    ============================================================ */
-const API_URL = "https://script.google.com/macros/s/AKfycbztAVghizh_eVDXNY7eMcBzReaVdXQQwSmULoWIePfyI9iHxWOxoS_IwZ5yS5zixi6Y/exec";
-const API_TOKEN = "BETHY-2026";
-
-/* ---- CONTRASEÑAS DE ACCESO (cámbialas cuando quieras) ---- */
-const PASS_VER  = "1234";            // solo consultar
-const PASS_EDIT = "Jj_F0rza2026";    // consultar y editar
-const CLOUD = API_URL.length > 10;
-async function apiList(){const r=await fetch(`${API_URL}?action=list&token=${encodeURIComponent(API_TOKEN)}`);const j=await r.json();if(!j.ok)throw new Error(j.error||"error");return j.data||[];}
-async function apiSave(rec){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:API_TOKEN,action:"save",record:rec})});const j=await r.json();if(!j.ok)throw new Error(j.error||"error");return j;}
-async function apiUpload(cliente,doc,nombre,mime,b64){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:API_TOKEN,action:"upload",cliente:cliente,doc:doc,nombre:nombre,mime:mime,data:b64})});const j=await r.json();if(!j.ok)throw new Error(j.error||"error");return j;}
+const SB_URL = "https://ahfjstuwekcuxshclprl.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoZmpzdHV3ZWtjdXhzaGNscHJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNDg2MjYsImV4cCI6MjEwMzYyNDYyNn0.lf1uw8WHPRy21GuYlK9NzeI5JgJK2be1LrODq22CodM";
+const UPLOAD_URL = "https://script.google.com/macros/s/AKfycbztAVghizh_eVDXNY7eMcBzReaVdXQQwSmULoWIePfyI9iHxWOxoS_IwZ5yS5zixi6Y/exec";
+const UPLOAD_TOKEN = "BETHY-2026";
+const CLOUD = true;
+let SESION_PASS = "";
+const sbJJ = window.supabase.createClient(SB_URL, SB_KEY);
+async function jjRpc(fn,args,reintentos){reintentos=reintentos||3;let ultimo;for(let i=0;i<reintentos;i++){try{const {data,error}=await sbJJ.rpc(fn,args||{});if(error){const m=error.message||"error";if(/acceso/i.test(m))throw new Error("ACCESO: tu contraseña no tiene permiso para esta acción.");throw new Error(m);}return data;}catch(e){ultimo=e;if(String(e.message).startsWith("ACCESO"))break;if(i<reintentos-1)await new Promise(res=>setTimeout(res,800*(i+1)));}}throw ultimo;}
+async function apiLogin(pass){return await jjRpc("jj_login",{p_pass:pass},2);}
+async function apiList(){const d=await jjRpc("jj_list",{p_pass:SESION_PASS});return Array.isArray(d)?d:[];}
+async function apiSave(rec){const nuevo=rec.id==null;const id=await jjRpc("jj_save",{p_pass:SESION_PASS,p_rec:rec},nuevo?1:3);return {ok:true,id:id};}
+async function apiBulk(recs){const n=await jjRpc("jj_bulk",{p_pass:SESION_PASS,p_recs:recs});return {ok:true,n:n};}
+async function apiHistorial(id){return await jjRpc("jj_historial",{p_pass:SESION_PASS,p_cliente:id},2);}
+async function apiUpload(cliente,doc,nombre,mime,b64){const r=await fetch(UPLOAD_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:UPLOAD_TOKEN,action:"upload",cliente:cliente,doc:doc,nombre:nombre,mime:mime,data:b64})});const txt=await r.text();let j;try{j=JSON.parse(txt);}catch(e){throw new Error("Google Drive no respondió. Intenta de nuevo en un momento.");}if(!j.ok)throw new Error(j.error||"error");return j;}
 function comprimir(file,maxPx,q){maxPx=maxPx||1600;q=q||0.72;return new Promise((res,rej)=>{
   if(!/^image\//.test(file.type)){const fr=new FileReader();fr.onload=()=>res({b64:String(fr.result).split(",")[1],mime:file.type||"application/octet-stream",nombre:file.name||"archivo"});fr.onerror=rej;fr.readAsDataURL(file);return;}
   const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>{
@@ -40,7 +76,6 @@ function comprimir(file,maxPx,q){maxPx=maxPx||1600;q=q||0.72;return new Promise(
     const d=c.toDataURL("image/jpeg",q);
     res({b64:d.split(",")[1],mime:"image/jpeg",nombre:String(file.name||"escaneo").replace(/\.[^.]+$/,"")+".jpg"});
   };img.onerror=rej;img.src=String(fr.result);};fr.onerror=rej;fr.readAsDataURL(file);});}
-async function apiBulk(recs){const r=await fetch(API_URL,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({token:API_TOKEN,action:"bulk",records:recs})});const j=await r.json();if(!j.ok)throw new Error(j.error||"error");return j;}
 
 /* ---------- Catálogos ---------- */
 const EJEC_DEF=["Sara Alonso","Aracely de Ochoa","Omar Guevara","Mary Morales"];
@@ -193,25 +228,30 @@ function libroSimple(registros){const wb=XLSX.utils.book_new();XLSX.utils.book_a
 function detallePor(registros,cats,keyFn){const aoa=[];const anchor={};cats.forEach(cat=>{const items=registros.filter(r=>keyFn(r)===cat);if(!items.length)return;anchor[cat]=aoa.length+1;aoa.push([`${cat} — ${items.length} cliente(s)`]);aoa.push(["Cliente","Ejecutivo","Empresa","Equipo","Expediente","Última interacción","Entrega","Tipo venta"]);items.forEach(r=>{const st=reqStats(r);const u=ultInter(r);aoa.push([r.cliente,r.ejecutivo,r.empresa,equiposTxt(r),st.completo?"Completo":`${st.recibido}/${st.aplicables}`,u?`${u.fecha} · ${u.tipo} · ${u.contacto}`:"",r.entregaProgramada||"",(r.tipoVenta||"")+(r.plazo?` ${r.plazo}m`:"")]);});aoa.push([]);});return {aoa,anchor};}
 function celdaLink(n,sheet,row){if(!sheet||!row)return n;return {f:`HYPERLINK("#${sheet}!A${row}","${n}")`,v:String(n)};}
 function aoaConFormulas(R){const ws={};let maxc=0;R.forEach((row,ri)=>row.forEach((cell,ci)=>{maxc=Math.max(maxc,ci);const addr=XLSX.utils.encode_cell({r:ri,c:ci});if(cell&&typeof cell==="object"&&cell.f)ws[addr]={t:"s",f:cell.f,v:cell.v};else if(typeof cell==="number")ws[addr]={t:"n",v:cell};else if(cell!==undefined&&cell!==null&&cell!=="")ws[addr]={t:"s",v:String(cell)};}));ws["!ref"]=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:Math.max(0,R.length-1),c:Math.max(2,maxc)}});ws["!cols"]=[{wch:36},{wch:16},{wch:36}];return ws;}
-function construirDashboard(registros,ancE,ancJ){const R=[];const cnt=fn=>registros.filter(fn).length;R.push(["SEGUIMIENTO A CLIENTES · HT RENT — DASHBOARD"]);R.push(["Generado: "+HOY]);R.push([]);R.push(["RESUMEN GENERAL"]);R.push(["Total de clientes",registros.length]);R.push(["Expedientes completos",cnt(r=>reqStats(r).completo)]);R.push(["Expedientes por completar",cnt(r=>!CERRADOS.includes(r.estatus)&&!reqStats(r).completo)]);R.push(["Entregas próximas (7 días)",cnt(r=>r.entregaProgramada&&r.entregaProgramada>=HOY&&r.entregaProgramada<=addDays(HOY,7))]);R.push(["Llamadas pendientes",cnt(r=>estadoCompromiso(r,Date.now()))]);R.push([]);R.push(["CLIENTES POR ETAPA","","clic en el número para ver el detalle"]);ESTATUS.forEach(e=>{const n=cnt(r=>r.estatus===e);R.push([e,celdaLink(n,"DetalleEtapa",ancE[e])]);});R.push([]);R.push(["CLIENTES POR EJECUTIVO","","clic en el número para ver el detalle"]);[...new Set(registros.map(r=>r.ejecutivo).filter(Boolean))].sort().forEach(j=>{const n=cnt(r=>r.ejecutivo===j);R.push([j,celdaLink(n,"DetalleEjecutivo",ancJ[j])]);});R.push([]);R.push(["POR TIPO DE VENTA"]);TIPOVENTA.forEach(t=>{const n=cnt(r=>r.tipoVenta===t);if(n)R.push([t,n]);});R.push([]);R.push(["POR TIPO DE CLIENTE"]);TIPO_CLIENTE.forEach(t=>R.push([t,cnt(r=>r.tipoCliente===t)]));R.push([]);R.push(["POR EMPRESA"]);[...new Set(registros.map(r=>r.empresa).filter(Boolean))].sort().forEach(e=>R.push([e,cnt(r=>r.empresa===e)]));return aoaConFormulas(R);}
+function construirDashboard(registros,ancE,ancJ){const R=[];const cnt=fn=>registros.filter(fn).length;R.push(["SEGUIMIENTO A CLIENTES · JJ FORZA — DASHBOARD"]);R.push(["Generado: "+HOY]);R.push([]);R.push(["RESUMEN GENERAL"]);R.push(["Total de clientes",registros.length]);R.push(["Expedientes completos",cnt(r=>reqStats(r).completo)]);R.push(["Expedientes por completar",cnt(r=>!CERRADOS.includes(r.estatus)&&!reqStats(r).completo)]);R.push(["Entregas próximas (7 días)",cnt(r=>r.entregaProgramada&&r.entregaProgramada>=HOY&&r.entregaProgramada<=addDays(HOY,7))]);R.push(["Llamadas pendientes",cnt(r=>estadoCompromiso(r,Date.now()))]);R.push([]);R.push(["CLIENTES POR ETAPA","","clic en el número para ver el detalle"]);ESTATUS.forEach(e=>{const n=cnt(r=>r.estatus===e);R.push([e,celdaLink(n,"DetalleEtapa",ancE[e])]);});R.push([]);R.push(["CLIENTES POR EJECUTIVO","","clic en el número para ver el detalle"]);[...new Set(registros.map(r=>r.ejecutivo).filter(Boolean))].sort().forEach(j=>{const n=cnt(r=>r.ejecutivo===j);R.push([j,celdaLink(n,"DetalleEjecutivo",ancJ[j])]);});R.push([]);R.push(["POR TIPO DE VENTA"]);TIPOVENTA.forEach(t=>{const n=cnt(r=>r.tipoVenta===t);if(n)R.push([t,n]);});R.push([]);R.push(["POR TIPO DE CLIENTE"]);TIPO_CLIENTE.forEach(t=>R.push([t,cnt(r=>r.tipoCliente===t)]));R.push([]);R.push(["POR EMPRESA"]);[...new Set(registros.map(r=>r.empresa).filter(Boolean))].sort().forEach(e=>R.push([e,cnt(r=>r.empresa===e)]));return aoaConFormulas(R);}
 function construirLibro(registros){const wb=XLSX.utils.book_new();const de=detallePor(registros,ESTATUS,r=>r.estatus);const ej=[...new Set(registros.map(r=>r.ejecutivo).filter(Boolean))].sort();const dj=detallePor(registros,ej,r=>r.ejecutivo);const wsDash=construirDashboard(registros,de.anchor,dj.anchor);const wsCli=XLSX.utils.json_to_sheet(registros.map(filaCliente));const wsDE=XLSX.utils.aoa_to_sheet(de.aoa.length?de.aoa:[["Sin datos"]]);const wsDJ=XLSX.utils.aoa_to_sheet(dj.aoa.length?dj.aoa:[["Sin datos"]]);XLSX.utils.book_append_sheet(wb,wsDash,"Dashboard");XLSX.utils.book_append_sheet(wb,wsCli,"Clientes");XLSX.utils.book_append_sheet(wb,wsDE,"DetalleEtapa");XLSX.utils.book_append_sheet(wb,wsDJ,"DetalleEjecutivo");return wb;}
 
 function Puerta({onEntrar}){
-  const [v,setV]=useState("");const [err,setErr]=useState("");
-  const inpP="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100";
-  const probar=()=>{const p=v.trim();
-    if(p===PASS_EDIT){onEntrar("edit");return;}
-    if(p===PASS_VER){onEntrar("ver");return;}
-    setErr("Contraseña incorrecta.");};
-  return (<div className="grid min-h-screen place-items-center px-5">
-    <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm">
-      <div className="h-1 bg-amber-500"></div>
+  const [v,setV]=useState("");const [err,setErr]=useState("");const [verif,setVerif]=useState(false);
+  const inpP="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-carbon focus:ring-2 focus:ring-forza-suave";
+  const probar=async()=>{const p=v.trim();if(!p||verif)return;setVerif(true);setErr("");
+    try{const nivel=await apiLogin(p);
+      if(nivel==="edit"||nivel==="ver"){SESION_PASS=p;onEntrar(nivel);return;}
+      if(nivel==="calidad_edit"||nivel==="calidad_ver"){setErr("Ese acceso es del tablero de incidencias de Calidad, que todavía está en construcción.");return;}
+      setErr("Contraseña incorrecta.");
+    }catch(e){setErr("No se pudo conectar con el servidor: "+e.message);}
+    finally{setVerif(false);}};
+  return (<div className="grid min-h-screen place-items-center bg-carbon px-5">
+    <div className="w-full max-w-sm overflow-hidden rounded-lg border-2 border-carbon-edge bg-white shadow-xl">
+      <div className="border-b-[5px] border-forza bg-carbon px-6 py-5">
+        <div className="marca-jj" style={{display:"block"}}><b>JJ FORZA</b><span>SEMI-REMOLQUES</span></div>
+      </div>
       <div className="p-6">
-        <div className="mb-4"><h1 className="text-lg font-bold tracking-tight text-slate-900">Seguimiento a Clientes</h1><p className="mono text-xs text-slate-500 mt-1">SERVICIO A CLIENTES · HT RENT</p></div>
+        <div className="mb-4"><h1 className="font-display text-2xl leading-tight text-carbon">Seguimiento a Clientes</h1><p className="text-sm text-slate-500 mt-1">Servicio a Clientes</p></div>
         <p className="mb-3 text-sm text-slate-500">Escribe tu contraseña para entrar.</p>
         <input type="password" value={v} autoFocus onChange={e=>{setV(e.target.value);setErr("");}} onKeyDown={e=>{if(e.key==="Enter")probar();}} className={inpP} placeholder="Contraseña"/>
         {err && <p className="mt-2 text-xs font-semibold text-red-600">{err}</p>}
-        <button onClick={probar} className="mt-3 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">Entrar</button>
+        <button onClick={probar} disabled={verif} className="mt-3 w-full rounded-lg border border-forza bg-forza px-4 py-2.5 text-sm font-bold text-forza-tinta hover:brightness-95 disabled:opacity-60">{verif?"Verificando…":"Entrar"}</button>
         <p className="mt-3 text-[11px] leading-relaxed text-slate-400">Con la contraseña de consulta puedes ver toda la información. Para capturar o modificar necesitas la contraseña de edición.</p>
       </div>
     </div>
@@ -283,7 +323,7 @@ function App(){
   const [sync,setSync]=useState("");
 
   useEffect(()=>{const t=setInterval(()=>setNow(Date.now()),30000);return()=>clearInterval(t);},[]);
-  useEffect(()=>{if(!CLOUD)return;setCargando(true);apiList().then(d=>{setRegistros(d.map(normEst));setCargando(false);}).catch(err=>{setCargando(false);setAviso({tipo:"error",texto:"No se pudo cargar de la nube: "+err.message});});},[]);
+  useEffect(()=>{if(!CLOUD||!modo)return;setCargando(true);setAviso(null);apiList().then(d=>{setRegistros(d.map(normEst));setCargando(false);}).catch(err=>{setCargando(false);setAviso({tipo:"error",texto:"No se pudo cargar de la nube: "+err.message});});},[modo]);
 
   function aplicarIA(res){setFEjec(res.ejec||"Todos");setFEstatus(res.estatus||"");setBusca((res.busca&&res.busca.length)?res.busca.join(" "):"");setFCli&&setFCli("Todos");}
   const ejecutivos=useMemo(()=>{const s=[...new Set(registros.map(r=>r.ejecutivo).filter(Boolean))].sort();return s.length?s:EJEC_DEF;},[registros]);
@@ -321,8 +361,8 @@ function App(){
   const devueltoClientes=devueltos.length;
   const devueltoEquipos=devueltos.reduce((s,r)=>s+uniEq(r),0);
 
-  const guardar=reg=>{const id=reg.id||(Math.max(0,...registros.map(x=>x.id))+1);const saved=normEst({...reg,id});if((saved.estatuses||[]).includes("Entregado")){if(!saved.fechaEntregadoMarcado)saved.fechaEntregadoMarcado=HOY;}else{saved.fechaEntregadoMarcado="";}setRegistros(prev=>prev.some(r=>r.id===id)?prev.map(r=>r.id===id?saved:r):[...prev,saved]);setEditando(null);if(CLOUD){setSync("Guardando…");apiSave(saved).then(()=>setSync("Guardado en la nube ✓")).catch(()=>setSync("⚠ Error al guardar en la nube"));}};
-  const marcarLlamada=id=>{setRegistros(prev=>prev.map(r=>r.id===id?{...r,compromisoCumplido:true}:r));if(CLOUD){const rec=registros.find(r=>r.id===id);if(rec)apiSave({...rec,compromisoCumplido:true}).catch(()=>{});}};
+  const guardar=reg=>{const esNuevo=!reg.id||reg.id<0;const id=esNuevo?-Date.now():reg.id;const saved=normEst({...reg,id});if((saved.estatuses||[]).includes("Entregado")){if(!saved.fechaEntregadoMarcado)saved.fechaEntregadoMarcado=HOY;}else{saved.fechaEntregadoMarcado="";}setRegistros(prev=>prev.some(r=>r.id===id)?prev.map(r=>r.id===id?saved:r):[...prev,saved]);setEditando(null);if(CLOUD){setSync("Guardando…");apiSave(esNuevo?{...saved,id:null}:saved).then(j=>{if(esNuevo&&j&&j.id){setRegistros(prev=>prev.map(r=>r.id===id?{...r,id:j.id}:r));}setSync("Guardado en la nube ✓");}).catch(e=>setSync("⚠ Error al guardar: "+e.message+" · No cierres la página y vuelve a guardar."));}};
+  const marcarLlamada=id=>{setRegistros(prev=>prev.map(r=>r.id===id?{...r,compromisoCumplido:true}:r));if(CLOUD){const rec=registros.find(r=>r.id===id);if(rec&&rec.id>0)apiSave({...rec,compromisoCumplido:true}).catch(e=>setSync("⚠ Error al guardar: "+e.message));}};
   const cambiarEjec=v=>{setFEjec(v);setFCli("Todos");};
   function recargar(){setSync("Cargando…");apiList().then(d=>{setRegistros(d.map(normEst));setSync("Actualizado ✓");}).catch(e=>setSync("Error: "+e.message));}
   function subirTodo(){setSync("Subiendo…");apiBulk(registros).then(j=>setSync("Subido ✓ ("+(j.n!=null?j.n:registros.length)+" clientes)")).catch(e=>setSync("Error: "+e.message));}
@@ -332,7 +372,7 @@ function App(){
   function csvUrl(u){const m=u.match(/\/d\/([a-zA-Z0-9-_]+)/);if(/output=csv|\/pub/.test(u))return u;if(m)return `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv`;return u;}
   function cargarSheet(){if(!sheetUrl.trim()){setAviso({tipo:"error",texto:"Pega la URL de tu Google Sheet."});return;}setAviso({tipo:"info",texto:"Cargando desde Google Sheet…"});fetch(csvUrl(sheetUrl.trim())).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();}).then(txt=>{const wb=XLSX.read(txt,{type:"string"});cargarFilas(XLSX.utils.sheet_to_json(hojaClientes(wb),{defval:""}));}).catch(()=>setAviso({tipo:"error",texto:"No se pudo leer la hoja. Debe estar compartida como «Cualquiera con el enlace» o publicada como CSV."}));}
   function exportar(){
-    const _ignore=0; const filas=[]; return XLSX.writeFile(libroSimple(registros),"seguimiento_htrent.xlsx"); const _dead=registros.map(r=>{
+    const _ignore=0; const filas=[]; return XLSX.writeFile(libroSimple(registros),"seguimiento_jjforza.xlsx"); const _dead=registros.map(r=>{
       const o={"Ejecutivo":r.ejecutivo,"Cliente":r.cliente,"Folio Venta":r.folioVenta||"","Folio JJ":r.folioJJ||"","Tipo de contrato":r.tipoContrato||"","Tipo de cliente":r.tipoCliente,"Empresa":r.empresa,"Correo":r.correo,"Teléfono":r.telefono,
         "Equipo":(r.equipos||[]).filter(e=>e.tipo).map(e=>`${e.cantidad||1} x ${e.tipo}`).join(" ; "),
         "NIV":r.niv||"","Tipo de venta":r.tipoVenta,"Plazo (meses)":r.plazo||"","Adicionales":(r.adicionales||[]).join(", "),"Estatus":r.estatus};
@@ -349,17 +389,27 @@ function App(){
 
   return (
     <div className="min-h-screen text-slate-800" style={{fontFamily:"ui-sans-serif,system-ui,'Segoe UI',Roboto,sans-serif"}}>
-      <header className="border-b border-stone-200 bg-white">
-        <div className="h-1 bg-amber-500"></div>
-        <div className="mx-auto max-w-6xl px-5 py-4 flex items-center justify-between gap-4 flex-wrap"><div className="flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-900 text-amber-400"><Icon name="truck" size={20}/></div><div><h1 className="text-lg font-bold tracking-tight text-slate-900 leading-none">Seguimiento a Clientes</h1><p className="text-xs text-slate-500 mt-1 mono">SERVICIO A CLIENTES · HT RENT</p></div></div><div className="flex items-center gap-2">
-          <button onClick={()=>setModo(null)} title="Cambiar de modo" className={`rounded-lg border px-2.5 py-1.5 text-xs font-bold ${puedeEditar?"border-emerald-300 bg-emerald-50 text-emerald-700":"border-stone-300 bg-stone-50 text-slate-500"}`}>{puedeEditar?"✎ Edición":"👁 Solo consulta"}</button>
-          {puedeEditar && <button onClick={()=>setEditando("nuevo")} className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-800"><Icon name="plus" size={16}/> Nuevo cliente</button>}
-        </div></div>
+      <header className="border-b-[5px] border-forza bg-carbon">
+        <div className="mx-auto max-w-6xl px-5 py-3.5 flex items-center justify-between gap-4">
+          <h1 className="font-display text-white leading-none" style={{fontSize:"clamp(20px,3.2vw,32px)"}}>Seguimiento a Clientes<small className="block mt-1 font-sans not-italic font-medium text-[13px]" style={{color:"#AEB3B9"}}>Servicio a Clientes</small></h1>
+          <div className="marca-jj text-right shrink-0" aria-label="JJ Forza, semi-remolques"><b>JJ FORZA</b><span>SEMI-REMOLQUES</span></div>
+        </div>
       </header>
+      <div className="border-b border-stone-200 bg-white">
+        <div className="mx-auto max-w-6xl px-5 py-2.5 flex items-center gap-3 flex-wrap">
+          <span className="text-sm text-slate-600"><b className="text-carbon">{puedeEditar?"Modo edición":"Solo consulta"}</b></span>
+          <span className="flex-1"></span>
+          {sync && <span className="text-xs font-semibold text-slate-500">{sync}</span>}
+          <button onClick={recargar} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400">Recargar</button>
+          <button onClick={exportar} className="inline-flex items-center gap-1.5 rounded-lg border border-carbon-edge bg-carbon px-3.5 py-2 text-sm font-semibold text-white hover:bg-carbon-2"><Icon name="download" size={15}/> Exportar Excel</button>
+          {puedeEditar && <button onClick={()=>setEditando("nuevo")} className="inline-flex items-center gap-2 rounded-lg border border-forza bg-forza px-4 py-2 text-sm font-bold text-forza-tinta hover:brightness-95"><Icon name="plus" size={16}/> Nuevo cliente</button>}
+          <button onClick={()=>{SESION_PASS="";setRegistros([]);setModo(null);}} className="rounded-full border border-stone-200 px-3 py-1 text-xs font-semibold text-slate-500 hover:border-slate-400">Salir</button>
+        </div>
+      </div>
 
       <main className="mx-auto max-w-6xl px-5 py-5">
-        {cargando && <div className="mb-4 rounded-lg bg-sky-50 text-sky-700 px-3 py-2 text-sm font-medium">Cargando datos de la nube…</div>}
-        <div className="mb-5 rounded-xl border border-stone-200 bg-white p-3">
+        {cargando && <div className="mb-4 rounded-lg border border-l-[6px] border-forza bg-carbon px-4 py-3 text-sm font-medium text-white">Cargando clientes…</div>}
+        {!CLOUD && <div className="mb-5 rounded-xl border border-stone-200 bg-white p-3">
           <div className="flex flex-wrap items-center gap-2">
             {puedeEditar && <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-stone-50"><Icon name="upload" size={15}/> Subir Excel / CSV<input type="file" accept=".xlsx,.xls,.csv" onChange={onArchivo} className="hidden"/></label>}
             <button onClick={exportar} className="inline-flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-stone-50"><Icon name="download" size={15}/> Exportar Excel</button>
@@ -368,7 +418,8 @@ function App(){
           </div>
           {aviso && <div className={`mt-2 rounded-md px-3 py-1.5 text-xs font-medium ${aviso.tipo==="ok"?"bg-emerald-50 text-emerald-700":aviso.tipo==="error"?"bg-red-50 text-red-700":"bg-sky-50 text-sky-700"}`}>{aviso.texto}</div>}
           {CLOUD && <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-stone-100 pt-2"><span className="text-xs font-semibold text-slate-500">Nube:</span><button onClick={recargar} className="rounded-lg border border-stone-300 px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-stone-50">Recargar</button>{sync && <span className="text-xs font-medium text-slate-600">{sync}</span>}</div>}
-        </div>
+        </div>}
+        {CLOUD && aviso && <div role="status" className={`mb-5 rounded-lg border border-l-[6px] px-4 py-3 text-sm font-medium ${aviso.tipo==="error"?"border-red-500 bg-red-50 text-red-700":aviso.tipo==="ok"?"border-forza bg-forza-suave text-carbon":"border-carbon-edge bg-white text-carbon"}`}>{aviso.texto} {aviso.tipo==="error" && <button onClick={()=>{setAviso(null);recargar();}} className="ml-2 underline font-bold">Reintentar</button>}</div>}
 
         {urgentes.length>0 && <Banner urgentes={urgentes} now={now} onEdit={setEditando} onListo={marcarLlamada} hayVencidas={hayVencidas}/>}
 
@@ -387,7 +438,7 @@ function App(){
         <TableroEtapas counts={etapaCounts} total={porEjec.length} activo={fEstatus} onPick={est=>{setFEstatus(fEstatus===est?"":est);setVista("clientes");}}/>
 
         <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <div className="inline-flex rounded-lg border border-stone-300 bg-white p-0.5"><Tab activo={vista==="clientes"} onClick={()=>setVista("clientes")}>Clientes</Tab><Tab activo={vista==="tablero"} onClick={()=>setVista("tablero")}>Tablero</Tab><Tab activo={vista==="lista"} onClick={()=>setVista("lista")}>Lista</Tab><Tab activo={vista==="dia"} onClick={()=>setVista("dia")}>Día</Tab></div>
+          <div className="flex flex-wrap gap-1 border-b-[3px] border-carbon"><Tab activo={vista==="clientes"} onClick={()=>setVista("clientes")}>Clientes</Tab><Tab activo={vista==="tablero"} onClick={()=>setVista("tablero")}>Tablero</Tab><Tab activo={vista==="lista"} onClick={()=>setVista("lista")}>Lista</Tab><Tab activo={vista==="dia"} onClick={()=>setVista("dia")}>Día</Tab></div>
           <div className="flex items-center gap-2 flex-wrap">
             <div className="flex items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-2.5"><Icon name="search" size={14} className="text-slate-400"/><input value={busca} onChange={e=>setBusca(e.target.value)} placeholder="Buscar cliente, NIV, folio, tel…" className="py-1.5 text-sm outline-none w-48"/></div>
             <Select value={fEjec} onChange={cambiarEjec} options={["Todos",...ejecutivos]} prefijo="Ejecutivo"/>
@@ -504,7 +555,7 @@ function Modal({inicial,fEjec,ejecutivos,cliPorEjec,onClose,onSave,puedeEditar})
   const [subiendo,setSubiendo]=useState("");
   async function subirArchivo(docKey,file){
     if(!puedeEditar){alert("Modo consulta: no puedes subir archivos.");return;}
-    if(!CLOUD){alert("Para subir archivos primero conecta la nube (API_URL y API_TOKEN).");return;}
+    if(!CLOUD){alert("La nube no está configurada.");return;}
     if(!String(f.cliente||"").trim()){alert("Captura primero el nombre del cliente; los archivos se guardan en su carpeta.");return;}
     try{setSubiendo(docKey);const c=await comprimir(file);const j=await apiUpload(String(f.cliente).trim(),docKey,c.nombre,c.mime,c.b64);
       setF(p=>({...p,archivos:{...(p.archivos||{}),[docKey]:[...(((p.archivos||{})[docKey])||[]),{id:j.id,url:j.url,nombre:c.nombre,fecha:HOY}]}}));setSubiendo("");
@@ -532,9 +583,9 @@ function Modal({inicial,fEjec,ejecutivos,cliPorEjec,onClose,onSave,puedeEditar})
   const inp="w-full rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100";
   const guardarLimpio=()=>onSave({...f,equipos:f.equipos.filter(e=>e.tipo.trim()).map(e=>({tipo:e.tipo.trim(),cantidad:Number(e.cantidad)||1})),entregaModo:f.entregaModo||"",nivsEntrega:(f.nivsEntrega||[]).map(x=>({niv:(x.niv||"").trim(),entregado:!!x.entregado})).filter(x=>x.niv||x.entregado),devueltoComercial:!!f.devueltoComercial,fechaDevuelto:f.devueltoComercial?(f.fechaDevuelto||HOY):"",motivoDevuelto:f.devueltoComercial?(f.motivoDevuelto||""):""});
 
-  return (<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-900/40 sm:p-4" onClick={onClose}>
-    <div className="w-full sm:max-w-lg max-h-[92vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white shadow-xl" onClick={e=>e.stopPropagation()}>
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-200 bg-white px-5 py-3.5 rounded-t-2xl"><h2 className="font-bold text-slate-900">{inicial?"Ficha del cliente":"Nuevo cliente"}</h2><button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-md hover:bg-stone-100 text-slate-500"><Icon name="x" size={18}/></button></div>
+  return (<div className="fixed inset-0 z-50 flex justify-end" style={{background:"rgba(10,12,15,.6)"}} onClick={onClose}>
+    <div className="h-full w-full sm:max-w-2xl overflow-y-auto bg-white shadow-2xl" style={{paddingBottom:"env(safe-area-inset-bottom,0px)"}} onClick={e=>e.stopPropagation()}>
+      <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b-4 border-forza bg-carbon px-5 py-3.5" style={{paddingTop:"calc(14px + env(safe-area-inset-top,0px))"}}><h2 className="font-display text-xl text-white leading-tight truncate">{inicial?(inicial.cliente||"Ficha del cliente"):"Nuevo cliente"}</h2><button onClick={onClose} aria-label="Cerrar" className="grid h-9 w-9 shrink-0 place-items-center rounded border border-carbon-edge text-white hover:bg-carbon-2"><Icon name="x" size={18}/></button></div>
       <datalist id="dl-ejec">{ejecutivos.map(x=><option key={x} value={x}/>)}</datalist>
       <datalist id="dl-cli">{clientesSug.map(x=><option key={x} value={x}/>)}</datalist>
       <datalist id="dl-emp">{EMPRESAS.map(x=><option key={x} value={x}/>)}</datalist>
@@ -609,9 +660,24 @@ function Modal({inicial,fEjec,ejecutivos,cliPorEjec,onClose,onSave,puedeEditar})
         <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 space-y-3"><div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500"><Icon name="alarm" size={14}/> Próximo compromiso de llamada</div><input type="datetime-local" value={f.compromiso} onChange={e=>set("compromiso",e.target.value)} className={inp}/>{f.compromiso && <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={f.compromisoCumplido} onChange={e=>set("compromisoCumplido",e.target.checked)} className="h-4 w-4"/> Ya realicé esta llamada</label>}<p className="text-xs text-slate-400">Con fecha y hora, el cliente se marca en rojo (vencida) o ámbar (por marcar pronto).</p></div>
         <div className="grid grid-cols-2 gap-3"><Campo label="Entrega de fábrica o taller" hint="Cuándo llega el equipo"><input type="date" value={f.entregaFabrica} onChange={e=>set("entregaFabrica",e.target.value)} className={inp}/></Campo><Campo label="Fecha de entrega al cliente"><input type="date" value={f.entregaProgramada} onChange={e=>set("entregaProgramada",e.target.value)} className={inp}/></Campo></div>
         <Campo label="Notas (opcional)"><textarea value={f.notas} onChange={e=>set("notas",e.target.value)} rows={2} className={inp}/></Campo>
+        {inicial && inicial.id>0 && <HistorialCambios id={inicial.id}/>}
       </div>
-      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-stone-200 bg-white px-5 py-3"><button onClick={onClose} className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-stone-100">Cancelar</button><button onClick={()=>valido&&guardarLimpio()} disabled={!valido||!puedeEditar} title={puedeEditar?"":"Modo consulta: no puedes guardar"} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-40">{inicial?"Guardar cambios":"Crear cliente"}</button></div>
+      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-stone-200 bg-white px-5 py-3"><button onClick={onClose} className="rounded-lg px-3.5 py-2 text-sm font-semibold text-slate-600 hover:bg-stone-100">Cancelar</button><button onClick={()=>valido&&guardarLimpio()} disabled={!valido||!puedeEditar} title={puedeEditar?"":"Modo consulta: no puedes guardar"} className="rounded-lg border border-forza bg-forza px-5 py-2 text-sm font-bold text-forza-tinta hover:brightness-95 disabled:opacity-40">{inicial?"Guardar cambios":"Crear cliente"}</button></div>
     </div>
+  </div>);
+}
+
+/* ---------- Registro de cambios ---------- */
+function HistorialCambios({id}){
+  const [items,setItems]=useState(null);const [err,setErr]=useState("");
+  useEffect(()=>{let vivo=true;apiHistorial(id).then(d=>{if(vivo)setItems(Array.isArray(d)?d:[]);}).catch(e=>{if(vivo)setErr(e.message);});return()=>{vivo=false;};},[id]);
+  const fmt=s=>{const d=new Date(s);return `${d.getDate()} ${MESES[d.getMonth()].slice(0,3)} ${d.getFullYear()} · ${pad(d.getHours())}:${pad(d.getMinutes())}`;};
+  return (<div className="rounded-lg border border-stone-200 p-3">
+    <h3 className="text-sm font-bold text-carbon mb-2 inline-flex items-center gap-1.5"><Icon name="history" size={15}/> Últimos cambios</h3>
+    {err?<p className="text-xs text-red-600">No se pudo cargar el historial: {err}</p>:
+     items===null?<p className="text-xs text-slate-400">Cargando…</p>:
+     items.length===0?<p className="text-xs text-slate-400">Sin cambios registrados desde la migración.</p>:
+     <ul className="space-y-1">{items.slice(0,10).map((c,i)=>(<li key={i} className="flex flex-wrap items-baseline gap-x-2 text-xs"><span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${c.accion==="alta"?"bg-forza-suave text-carbon":"bg-slate-100 text-slate-600"}`}>{c.accion==="alta"?"Alta":"Edición"}</span><span className="text-slate-500">{fmt(c.fecha)}</span>{c.usuario&&<span className="font-semibold text-slate-700">{c.usuario}</span>}</li>))}</ul>}
   </div>);
 }
 
@@ -635,7 +701,7 @@ function TableroEtapas({counts,total,activo,onPick}){
   );
 }
 function Kpi({icon,label,valor,tono}){return <div className="rounded-xl border border-stone-200 bg-white px-4 py-3"><div className="flex items-center gap-1.5 text-slate-400"><Icon name={icon} size={16}/><span className="text-xs font-medium text-slate-500">{label}</span></div><p className={`mt-1 text-2xl font-bold mono ${tono}`}>{valor}</p></div>;}
-function Tab({activo,onClick,children}){return <button onClick={onClick} className={`rounded-md px-3 py-1.5 text-sm font-semibold ${activo?"bg-slate-900 text-white":"text-slate-600 hover:bg-stone-100"}`}>{children}</button>;}
+function Tab({activo,onClick,children}){return <button onClick={onClick} className={`rounded-t px-4 py-2.5 text-sm font-semibold ${activo?"bg-carbon text-white":"text-slate-500 hover:text-carbon"}`} aria-selected={activo}>{children}</button>;}
 function Select({value,onChange,options,prefijo}){return <select value={value} onChange={e=>onChange(e.target.value)} className="rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-slate-700 outline-none focus:border-slate-400 max-w-[180px]">{options.map(o=><option key={o} value={o}>{o==="Todos"?`${prefijo}: Todos`:o}</option>)}</select>;}
 function Vacio({texto}){return <div className="rounded-xl border border-dashed border-stone-300 bg-white py-12 text-center"><Icon name="calendar" size={28} className="mx-auto text-stone-300"/><p className="mt-2 text-sm text-slate-500 max-w-xs mx-auto">{texto}</p></div>;}
 
